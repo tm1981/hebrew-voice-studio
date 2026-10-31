@@ -1,0 +1,35 @@
+# Build context for the Dockerfile at the repo root.
+
+# Models are a volume (/app/models), downloaded by the app on first use
+models/
+
+# User data: lives in the /data volume in the container
+outputs/
+voices/
+api_key.txt
+presets.json
+settings.json
+pronunciations.json
+
+# Third-party code: tools/fetch_vendor.py downloads it at pinned versions during the build
+vendor/BlueTTS/
+vendor/phonikud-chatterbox/
+vendor/higgs-studio/
+
+# Logs, caches, tests and tool state
+**/__pycache__/
+**/*.pyc
+*.log
+test_*.py
+*.wav
+*.mp3
+.superpowers/
+.claude/
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+docker/
+
+# Windows-only launchers
+*.bat

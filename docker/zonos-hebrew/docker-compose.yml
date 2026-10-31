@@ -1,0 +1,36 @@
+# Zonos-Hebrew (maxmelichov/Zonos-Hebrew) for a Docker host with an NVIDIA GPU (e.g. RTX 3090).
+#
+# Portainer: Stacks -> Add stack -> Web editor -> paste this file -> Deploy.
+# Then open http://<docker-host-ip>:7860 for the Gradio UI.
+#
+# Host prerequisites: NVIDIA driver + NVIDIA Container Toolkit, so `docker run --gpus all
+# nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi` works on that machine.
+#
+# First start pulls a ~9 GB image and then downloads the model weights from Hugging Face
+# into the volume below, so give it a while; later starts are fast.
+# License: check the Zonos-Hebrew repo before any commercial use (likely non-commercial).
+
+services:
+  zonos-hebrew:
+    image: maxme123/zonos-hebrew:latest
+    container_name: zonos-hebrew
+    command: ["python3", "gradio_interface.py"]
+    ports:
+      - "7860:7860"
+    environment:
+      - GRADIO_SHARE=False          # True would publish a public gradio.live link
+      - NVIDIA_VISIBLE_DEVICES=all  # or the GPU index, e.g. 0, if the host has several
+    volumes:
+      - zonos-hf-cache:/root/.cache/huggingface   # model weights survive container rebuilds
+    shm_size: "2gb"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  zonos-hf-cache:

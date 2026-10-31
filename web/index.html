@@ -1,0 +1,2094 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Hebrew Voice Studio</title>
+<link href="fonts/fonts.css" rel="stylesheet"><!-- bundled defaults; other fonts in the Aa menu load from Google Fonts when picked -->
+<style>
+  :root {
+    --app: #171C28;
+    --rail: #12161F;
+    --surface: #1F2636;
+    --raised: #273046;
+    --line: #2F3950;
+    --line-strong: #3D4864;
+    --ink: #E8ECF3;
+    --muted: #8F9BB4;
+    --faint: #6A7690;
+    --accent: #E8A33D;
+    --accent-ink: #1C1406;
+    --accent-soft: rgba(232, 163, 61, .16);
+    --wave: #3E4A66;
+    --ok: #5CC59A;
+    --error: #FF8A7A;
+    --ui: "Heebo", "Segoe UI", sans-serif;          /* both can be changed in the font menu */
+    --read: "Noto Serif Hebrew", "David", serif;
+    --read-scale: 1;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--app); color: var(--ink); font: 400 14px/1.5 var(--ui); }
+  [hidden] { display: none !important; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  svg { width: 18px; height: 18px; flex: none; }
+
+  .app {
+    display: grid; height: 100dvh;
+    grid-template-columns: 212px minmax(0, 1fr);
+    grid-template-rows: 56px minmax(0, 1fr) auto;
+    grid-template-areas: "top top" "rail main" "player player";
+  }
+
+  /* Top bar */
+  .top { grid-area: top; display: flex; align-items: center; gap: 14px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; color: #fff; white-space: nowrap; }
+  .brand svg { width: 22px; height: 22px; color: var(--accent); }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 99px; background: var(--surface); color: var(--muted); font-size: 12.5px; white-space: nowrap; border: 1px solid var(--line); }
+  button.chip { cursor: pointer; }
+  button.chip:hover { color: var(--ink); border-color: var(--line-strong); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+  .dot.ok { background: var(--ok); }
+  .dot.down { background: var(--error); }
+  .spacer { flex: 1; }
+  .fonts-menu { position: relative; }
+  .fonts-menu > button { width: 34px; height: 30px; font: 500 14px var(--read); }
+  .fonts-pop {
+    position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 30; width: 290px;
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; padding: 16px;
+    box-shadow: 0 18px 40px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 14px;
+  }
+  .fonts-pop h2 { margin: 0; font-size: 14px; font-weight: 600; color: #fff; }
+  .fonts-pop .sample { font: 400 calc(19px * var(--read-scale))/1.7 var(--read); background: var(--rail); border-radius: 8px; padding: 8px 12px; direction: rtl; }
+  .lang { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 99px; overflow: hidden; }
+  .lang button { border: 0; background: none; padding: 4px 12px; cursor: pointer; color: var(--muted); font-size: 12.5px; }
+  .lang button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+  /* Side menu */
+  .rail { grid-area: rail; background: var(--rail); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; border-inline-end: 1px solid var(--line); }
+  .rail button {
+    display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 12px; border: 0; border-radius: 8px;
+    background: none; color: var(--muted); cursor: pointer; text-align: start; font-size: 14px;
+    border-inline-start: 3px solid transparent;
+  }
+  .rail button:hover { color: var(--ink); background: rgba(255,255,255,.03); }
+  .rail button[aria-current="page"] { color: #fff; background: var(--surface); border-inline-start-color: var(--accent); }
+  .rail button[aria-current="page"] svg { color: var(--accent); }
+  .rail .badge { margin-inline-start: auto; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .rail .bottom { margin-top: auto; }
+
+  main { grid-area: main; overflow: auto; padding: 22px 24px 28px; }
+  .view { max-width: 1180px; margin: 0 auto; }
+  .view-head { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+  .view-head h1 { font-size: 22px; font-weight: 600; margin: 0; color: #fff; }
+  .view-head p { margin: 4px 0 0; color: var(--muted); max-width: 72ch; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+
+  /* Controls */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--line-strong); background: var(--raised); color: var(--ink); cursor: pointer; font-size: 13.5px;
+    text-decoration: none; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--muted); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover { color: var(--ink); background: var(--raised); }
+  .btn.danger:hover { color: var(--error); border-color: var(--error); }
+  .icon-btn { width: 34px; height: 34px; padding: 0; flex: none; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > label, .label { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .field output { color: var(--ink); font-variant-numeric: tabular-nums; direction: ltr; }
+  .hint { margin: 0; font-size: 12px; color: var(--faint); }
+  select, input[type="text"], input[type="search"], input[type="number"] {
+    width: 100%; min-width: 0; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 8px;
+    padding: 8px 11px; color: var(--ink);
+  }
+  select {
+    appearance: none; padding-inline-end: 32px; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238F9BB4' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-size: 16px; background-position: right 10px center;
+  }
+  [dir="rtl"] select { background-position: left 10px center; }
+  select option, select optgroup { background: var(--surface); }
+  input::placeholder, textarea::placeholder { color: var(--faint); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; font-size: 13px; }
+  .switch input {
+    appearance: none; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--line-strong);
+    position: relative; cursor: pointer; transition: background .15s; margin: 0;
+  }
+  .switch input::after { content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: inset-inline-start .15s; }
+  .switch input:checked { background: var(--accent); }
+  .switch input:checked::after { inset-inline-start: 17px; }
+  .seg { display: inline-flex; background: var(--rail); border: 1px solid var(--line); border-radius: 8px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: none; color: var(--muted); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .seg button[aria-pressed="true"] { background: var(--raised); color: #fff; }
+
+  /* Read view */
+  .read { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; height: 100%; max-width: 1180px; }
+  .editor-col { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .editor-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .editor { flex: 1; display: flex; min-height: 320px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+  .editor:focus-within { border-color: var(--line-strong); }
+  textarea, .niqqud {
+    flex: 1; width: 100%; border: 0; resize: none; background: none; color: var(--ink);
+    padding: 22px 26px; font: 400 calc(23px * var(--read-scale))/1.8 var(--read);
+  }
+  textarea:focus { outline: none; }
+  .niqqud { white-space: pre-wrap; overflow: auto; font-size: calc(25px * var(--read-scale)); line-height: 1.95; }
+  .niqqud .note { display: block; font: 400 13px/1.5 var(--ui); color: var(--muted); margin-bottom: 14px; }
+  .editor-foot { display: flex; justify-content: space-between; gap: 16px; color: var(--faint); font-size: 12px; }
+  .editor-foot span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .settings { padding: 18px; display: flex; flex-direction: column; gap: 16px; align-self: start; position: sticky; top: 0; }
+  .engine-tag { color: var(--accent); font-size: 12px; }
+  .divider { height: 1px; background: var(--line); margin: 2px 0; }
+  details.advanced summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; display: flex; align-items: center; gap: 6px; }
+  details.advanced summary::-webkit-details-marker { display: none; }
+  details.advanced summary svg { width: 14px; height: 14px; transition: transform .15s; }
+  details.advanced[open] summary svg { transform: rotate(90deg); }
+  [dir="rtl"] details.advanced summary svg { transform: scaleX(-1); }
+  [dir="rtl"] details.advanced[open] summary svg { transform: rotate(90deg); }
+  .advanced-body { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+  .speakers { display: flex; flex-direction: column; gap: 6px; }
+  .speakers label { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; align-items: center; font-size: 13px; }
+  .speak { width: 100%; justify-content: space-between; padding: 12px 16px; font-size: 15px; border-radius: 10px; }
+  .speak kbd { font: 400 11.5px var(--ui); opacity: .65; direction: ltr; }
+  .reset { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--faint); font-size: 12px; cursor: pointer; text-decoration: underline; }
+
+  /* Lists (library, voices, dictionary) */
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list > li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .list > li:last-child { border-bottom: 0; }
+  .list .grow { flex: 1; min-width: 0; }
+  .list .empty { color: var(--muted); padding: 28px 16px; justify-content: center; }
+  .lib-row[aria-current="true"] { background: var(--accent-soft); }
+  .lib-row .snippet { font: 400 18px/1.5 var(--read); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lib-row .sub { color: var(--muted); font-size: 12.5px; }
+  .lib-row .play-sm { border-radius: 50%; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--raised); color: var(--muted); font-size: 11.5px; margin-inline-end: 6px; }
+  .tag.accent { background: var(--accent-soft); color: var(--accent); }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .toolbar input { max-width: 340px; }
+
+  .two-col { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+  .engine-block + .engine-block { margin-top: 14px; }
+  .engine-block h2 { font-size: 13px; font-weight: 600; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: baseline; color: #fff; }
+  .engine-block h2 span { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .form { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .form h2 { margin: 0; font-size: 15px; font-weight: 600; color: #fff; }
+  .form p { margin: 0; }
+  .file-pick { display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .file-pick:hover { border-color: var(--accent); color: var(--ink); }
+  .file-pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .file-pick .names { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recorder { display: flex; gap: 10px; align-items: center; }
+  .meter { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .meter div { height: 100%; width: 0; background: var(--accent); }
+  .clip-list { display: flex; flex-direction: column; gap: 10px; }
+  .clip { background: var(--rail); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .clip-head { display: flex; align-items: center; gap: 10px; }
+  .clip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .clip-len { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .clip-len.good { color: var(--ok); }
+  .clip-head .icon-btn { width: 28px; height: 28px; }
+  .clip-wave { width: 100%; height: 64px; display: block; cursor: ew-resize; touch-action: none; border-radius: 6px; }
+  .clip-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+  .clip-tools .btn, .btn.small { padding: 5px 10px; font-size: 12.5px; }
+  .clip-tools svg { width: 14px; height: 14px; }
+  .clip-check { margin: 0; font-size: 12.5px; }
+  .clip-check.ok { color: var(--ok); }
+  .clip-check.bad { color: var(--error); }
+  .word-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 16px; border-bottom: 1px solid var(--line); }
+  .dict-row .word, .dict-row .reading { font: 400 19px var(--read); flex: 1; min-width: 0; }
+  .dict-row .reading { color: var(--muted); }
+  .dict-row .arrow { color: var(--faint); }
+
+  .progress { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .progress div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .job { display: flex; flex-direction: column; gap: 10px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat { padding: 16px; }
+  .stat .label { margin-bottom: 6px; }
+  .stat .value { font-size: 20px; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
+  .stat .progress { margin-top: 10px; height: 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: start; padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  /* Player */
+  .player {
+    grid-area: player; display: flex; align-items: center; gap: 16px; padding: 10px 20px;
+    background: var(--rail); border-top: 1px solid var(--line); position: relative;
+  }
+  .play {
+    width: 42px; height: 42px; border-radius: 50%; border: 0; cursor: pointer; flex: none;
+    background: var(--accent); color: var(--accent-ink); display: grid; place-items: center;
+  }
+  .play:disabled { background: var(--raised); color: var(--faint); cursor: default; }
+  .now { width: 210px; flex: none; min-width: 0; }
+  .now b { display: block; font-weight: 500; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .now span { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #wave { flex: 1; min-width: 60px; height: 40px; display: block; cursor: pointer; }
+  .time { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; direction: ltr; }
+  .player-actions { display: flex; gap: 8px; }
+  .player-actions .btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+
+  .drawer {
+    position: absolute; bottom: calc(100% + 8px); inset-inline-end: 16px; width: min(600px, calc(100vw - 32px));
+    max-height: min(60vh, 560px); display: flex; flex-direction: column;
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 40px rgba(0,0,0,.45); z-index: 10;
+  }
+  .drawer header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+  .drawer header h2 { margin: 0; font-size: 15px; font-weight: 600; color: #fff; }
+  .drawer header p { margin: 4px 0 0; }
+  .drawer ol { list-style: none; margin: 0; padding: 0; overflow: auto; counter-reset: s; }
+  .drawer li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .drawer li:last-child { border-bottom: 0; }
+  .drawer li .n { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .drawer li.current { background: var(--accent-soft); }
+  .drawer li.current .n { color: var(--accent); }
+  .drawer .text { font: 400 calc(18px * var(--read-scale))/1.5 var(--read); }
+  .drawer .pause { color: var(--muted); font-size: 13px; }
+  .drawer .actions { display: flex; gap: 4px; }
+  .drawer .actions .btn { padding: 5px 9px; font-size: 12.5px; }
+  .drawer input { font: 400 17px var(--read); border-color: var(--accent); }
+
+  .toast {
+    position: fixed; bottom: 86px; left: 50%; transform: translateX(-50%); z-index: 20; max-width: min(620px, calc(100vw - 32px));
+    padding: 10px 16px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-strong); color: var(--ink);
+    box-shadow: 0 10px 30px rgba(0,0,0,.4); display: flex; gap: 12px; align-items: center; font-size: 13.5px;
+  }
+  .toast.error { border-color: var(--error); color: var(--error); }
+  .toast button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0; font-size: 16px; line-height: 1; }
+
+  @media (max-width: 1000px) {
+    .read, .two-col { grid-template-columns: minmax(0, 1fr); }
+    .read { height: auto; }
+    .settings { position: static; }
+    .editor { min-height: 260px; }
+  }
+  @media (max-width: 760px) {
+    .app {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 52px minmax(0, 1fr) auto auto;
+      grid-template-areas: "top" "main" "player" "rail";
+    }
+    .top { padding: 0 16px; gap: 10px; }
+    .brand span, #statusChip .label { display: none; }
+    .rail { flex-direction: row; padding: 4px 6px; border-inline-end: 0; border-top: 1px solid var(--line); gap: 0; }
+    .rail button { flex-direction: column; gap: 3px; padding: 6px 2px; font-size: 10.5px; border-inline-start: 0; border-radius: 6px; justify-content: center; text-align: center; }
+    .rail button[aria-current="page"] { background: none; }
+    .rail .badge, .rail .bottom { display: none; }
+    main { padding: 16px; }
+    textarea, .niqqud { padding: 16px; font-size: calc(20px * var(--read-scale)); }
+    .player { flex-wrap: wrap; gap: 10px 12px; padding: 10px 16px; }
+    .now { flex: 1; width: auto; }
+    #wave { order: 5; flex-basis: 100%; height: 32px; }
+    .player-actions .btn span { display: none; }
+    .speak kbd { display: none; }
+    .word-form { grid-template-columns: 1fr; }
+    .toast { bottom: 150px; }
+    .lib-row .actions-wide { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-read" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h4v15H4zM10 5h4v15h-4zM16.5 6l3.5-1 3 14-3.5 1z" transform="translate(-1 0)"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-voices" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-words" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 19V5M9 8h6"/></symbol>
+  <symbol id="i-status" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01" stroke-width="2.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" /></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke-linecap="round"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5M7 9l5-5 5 5M5 20h14"/></symbol>
+  <symbol id="i-compare" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8h12M12 4l4 4-4 4M20 16H8M12 12l-4 4 4 4"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><svg><use href="#i-read"/></svg><span data-i18n="title"></span></div>
+    <button type="button" class="chip" id="statusChip" data-go="status"><span class="dot" id="dot"></span><span class="label" id="device"></span></button>
+    <span class="spacer"></span>
+    <div class="fonts-menu">
+      <button type="button" class="btn icon-btn" id="fontsBtn" aria-expanded="false" data-i18n-title="fonts">Aa</button>
+      <div class="fonts-pop" id="fontsPop" hidden>
+        <h2 data-i18n="fonts"></h2>
+        <div class="field"><label for="readFont" data-i18n="readFont"></label><select id="readFont"></select></div>
+        <div class="field"><label for="readSize"><span data-i18n="readSize"></span><output id="readSizeOut">100%</output></label>
+          <input type="range" id="readSize" min="0.8" max="1.5" step="0.05" value="1"></div>
+        <div class="sample">שָׁלוֹם וּבְרוּכִים הַבָּאִים. היום נדבר על מזג האוויר.</div>
+        <div class="field"><label for="uiFont" data-i18n="uiFont"></label><select id="uiFont"></select></div>
+        <button type="button" class="reset" id="fontsReset" data-i18n="reset"></button>
+      </div>
+    </div>
+    <div class="lang" role="group" aria-label="Language / שפה">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="he" aria-pressed="false">עב</button>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Sections">
+    <button type="button" data-go="read" aria-current="page"><svg><use href="#i-read"/></svg><span data-i18n="nav.read"></span></button>
+    <button type="button" data-go="library"><svg><use href="#i-library"/></svg><span data-i18n="nav.library"></span><span class="badge" id="libCount"></span></button>
+    <button type="button" data-go="documents"><svg><use href="#i-doc"/></svg><span data-i18n="nav.documents"></span></button>
+    <button type="button" data-go="voices"><svg><use href="#i-voices"/></svg><span data-i18n="nav.voices"></span></button>
+    <button type="button" data-go="words"><svg><use href="#i-words"/></svg><span data-i18n="nav.words"></span></button>
+    <button type="button" data-go="status" class="bottom"><svg><use href="#i-status"/></svg><span data-i18n="nav.status"></span></button>
+  </nav>
+
+  <main id="main">
+    <!-- Read -->
+    <section class="view read" data-view="read">
+      <div class="editor-col">
+        <div class="editor-bar">
+          <div class="seg" role="group">
+            <button type="button" id="viewText" aria-pressed="true" data-i18n="tab.text"></button>
+            <button type="button" id="viewNiqqud" aria-pressed="false" data-i18n="tab.niqqud"></button>
+          </div>
+          <span class="spacer"></span>
+          <button type="button" class="btn ghost" id="compare"><svg><use href="#i-compare"/></svg><span data-i18n="compare"></span></button>
+        </div>
+        <div class="editor">
+          <textarea id="text" maxlength="5000" dir="auto" data-i18n-placeholder="placeholder"></textarea>
+          <div class="niqqud" id="niqqud" dir="rtl" hidden aria-live="polite"></div>
+        </div>
+        <div class="editor-foot"><span data-i18n="hint"></span><span id="count"></span></div>
+      </div>
+
+      <aside class="panel settings">
+        <div class="field">
+          <label for="preset" data-i18n="preset"></label>
+          <div class="row">
+            <select id="preset"></select>
+            <button type="button" class="btn icon-btn" id="savePreset" data-i18n-title="savePreset"><svg><use href="#i-save"/></svg></button>
+            <button type="button" class="btn icon-btn danger" id="deletePreset" data-i18n-title="deletePreset" hidden><svg><use href="#i-trash"/></svg></button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="voice"><span data-i18n="voice"></span><span class="engine-tag" id="engineTag"></span></label>
+          <select id="voice"></select>
+          <p class="hint" id="hebrewOnlyHint" data-i18n="hebrewOnlyHint" hidden></p>
+        </div>
+        <div class="field">
+          <label for="speed"><span data-i18n="speed"></span><output id="speedOut">1.00×</output></label>
+          <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1">
+          <p class="hint" data-i18n="speedHint"></p>
+        </div>
+        <div class="field">
+          <label for="format" data-i18n="format"></label>
+          <select id="format">
+            <option value="wav">WAV</option><option value="mp3">MP3</option><option value="flac">FLAC</option><option value="opus">Opus</option>
+          </select>
+        </div>
+        <div class="divider"></div>
+        <label class="switch"><span data-i18n="normalize"></span><input type="checkbox" id="normalize" checked></label>
+        <label class="switch"><span data-i18n="useCache"></span><input type="checkbox" id="useCache" checked></label>
+        <label class="switch"><span data-i18n="dialogue"></span><input type="checkbox" id="dialogue"></label>
+        <div class="speakers" id="speakers" hidden></div>
+        <details class="advanced" id="advanced">
+          <summary><svg><use href="#i-chev"/></svg><span data-i18n="advanced"></span></summary>
+          <div class="advanced-body">
+            <div class="field">
+              <label for="sentencePause"><span data-i18n="sentencePause"></span><output id="sentencePauseOut">0.25</output></label>
+              <input type="range" id="sentencePause" min="0" max="1.5" step="0.05" value="0.25">
+              <p class="hint" data-i18n="sentencePauseHint"></p>
+            </div>
+            <div id="engineOptions" class="advanced-body" style="padding:0"></div>
+            <button type="button" class="reset" id="reset" data-i18n="reset"></button>
+          </div>
+        </details>
+        <button type="button" class="btn primary speak" id="speak"><span data-i18n="speak"></span><kbd>Ctrl+Enter</kbd></button>
+      </aside>
+    </section>
+
+    <!-- Library -->
+    <section class="view" data-view="library" hidden>
+      <div class="view-head"><div><h1 data-i18n="nav.library"></h1><p data-i18n="libraryHelp"></p></div></div>
+      <div class="toolbar"><input type="search" id="libSearch" data-i18n-placeholder="search"></div>
+      <div class="panel"><ul class="list" id="history"></ul></div>
+    </section>
+
+    <!-- Long documents -->
+    <section class="view" data-view="documents" hidden>
+      <div class="view-head"><div><h1 data-i18n="nav.documents"></h1><p data-i18n="docHelp"></p></div></div>
+      <div class="panel form" style="max-width:720px">
+        <label class="file-pick"><svg><use href="#i-upload"/></svg><span class="names" id="docName" data-i18n="docPick"></span>
+          <input type="file" id="docFile" accept=".txt,.md,.docx,.pdf"></label>
+        <p class="muted small" id="docUses"></p>
+        <div class="row"><button type="button" class="btn primary" id="docStart" data-i18n="docStart"></button></div>
+        <div class="job" id="job" hidden>
+          <div class="divider"></div>
+          <div class="progress"><div id="jobBar"></div></div>
+          <div id="jobText" class="muted"></div>
+          <div class="row">
+            <button type="button" class="btn" id="jobCancel" data-i18n="stop"></button>
+            <a id="jobZip" class="btn" hidden><svg><use href="#i-download"/></svg><span data-i18n="zip"></span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Voices -->
+    <section class="view" data-view="voices" hidden>
+      <div class="view-head"><div><h1 data-i18n="nav.voices"></h1><p data-i18n="voicesHelp"></p></div></div>
+      <div class="two-col">
+        <div id="voiceList"></div>
+        <div class="panel form" id="addVoice">
+          <h2 data-i18n="addTitle"></h2>
+          <p class="muted small" data-i18n="addHelp"></p>
+          <div class="field">
+            <label for="voiceName" data-i18n="voiceName"></label>
+            <input type="text" id="voiceName" maxlength="40" data-i18n-placeholder="voiceNamePh">
+          </div>
+          <label class="file-pick"><svg><use href="#i-upload"/></svg><span class="names" data-i18n="filesPick"></span>
+            <input type="file" id="voiceFile" accept=".wav,.mp3,.flac,.ogg,audio/*" multiple></label>
+          <div class="recorder">
+            <button type="button" class="btn" id="recordBtn"><svg><use href="#i-mic"/></svg><span id="recordLabel" data-i18n="record"></span></button>
+            <div class="meter" aria-hidden="true"><div id="meterFill"></div></div>
+            <span id="recordTime" class="muted small"></span>
+          </div>
+          <p class="hint" id="recordNote" hidden></p>
+          <p class="hint" id="clipsHint" data-i18n="trimHint" hidden></p>
+          <div class="clip-list" id="clips"></div>
+          <div class="row">
+            <button type="button" class="btn" id="checkVoice" data-i18n="checkQuality"></button>
+            <button type="button" class="btn primary" id="uploadVoice" data-i18n="saveVoice"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pronunciation -->
+    <section class="view" data-view="words" hidden>
+      <div class="view-head"><div><h1 data-i18n="nav.words"></h1><p data-i18n="wordsHelp"></p></div></div>
+      <div class="panel" style="max-width:820px">
+        <div class="word-form">
+          <input type="text" id="lexWord" maxlength="60" dir="auto" data-i18n-placeholder="wordPh">
+          <input type="text" id="lexReading" maxlength="200" dir="auto" data-i18n-placeholder="readingPh">
+          <button type="button" class="btn primary" id="lexAdd" data-i18n="add"></button>
+        </div>
+        <ul class="list" id="lexList"></ul>
+      </div>
+    </section>
+
+    <!-- Server status -->
+    <section class="view" data-view="status" hidden>
+      <div class="view-head"><div><h1 data-i18n="nav.status"></h1></div><span class="spacer"></span><button type="button" class="btn" id="statusRefresh" data-i18n="refresh"></button></div>
+      <div id="statusBody"></div>
+      <div class="panel form" id="gpuPanel" style="max-width:720px;margin-top:16px">
+        <h2 data-i18n="gpuTitle"></h2>
+        <p class="muted small" data-i18n="gpuHelp"></p>
+        <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="btn primary" id="gpuFree" data-i18n="gpuFree"></button>
+          <label for="autoUnload" class="small" data-i18n="autoUnload"></label>
+          <select id="autoUnload" style="width:auto">
+            <option value="0" data-i18n="autoOff"></option>
+            <option value="10" data-i18n="auto10"></option>
+            <option value="30" data-i18n="auto30"></option>
+            <option value="60" data-i18n="auto60"></option>
+            <option value="120" data-i18n="auto120"></option>
+          </select>
+        </div>
+      </div>
+      <div class="panel form" id="zonosPanel" style="max-width:720px;margin-top:16px">
+        <h2 data-i18n="zonosTitle"></h2>
+        <p class="muted small" data-i18n="zonosHelp"></p>
+        <div class="row">
+          <input type="text" id="zonosUrl" dir="ltr" maxlength="300" placeholder="http://<docker-host>:7860/">
+          <button type="button" class="btn primary" id="zonosSave" data-i18n="zonosConnect"></button>
+          <button type="button" class="btn" id="zonosOff" data-i18n="zonosOff"></button>
+        </div>
+        <p class="small" id="zonosState"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="player" aria-label="Player">
+    <button type="button" class="play" id="play" disabled><svg id="playIcon"><use href="#i-play"/></svg></button>
+    <div class="now"><b id="nowTitle"></b><span id="nowSub"></span></div>
+    <canvas id="wave"></canvas>
+    <span class="time" id="time">0:00 / 0:00</span>
+    <div class="player-actions">
+      <button type="button" class="btn" id="sentencesBtn" aria-expanded="false" disabled><svg><use href="#i-list"/></svg><span data-i18n="sentences"></span></button>
+      <a class="btn" id="download" aria-disabled="true"><svg><use href="#i-download"/></svg><span data-i18n="download"></span></a>
+    </div>
+    <div class="drawer" id="drawer" hidden>
+      <header><h2 data-i18n="sentences"></h2><p class="muted small" data-i18n="sentencesHelp"></p></header>
+      <ol id="sentences"></ol>
+    </div>
+    <audio id="audio" preload="auto"></audio>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button type="button" id="toastClose" aria-label="Close">×</button></div>
+
+<script>
+// ---------- Interface text: English and Hebrew ----------
+const STR = {
+  en: {
+    title: "Hebrew Voice Studio",
+    connecting: "Connecting…", ready: "Ready · {gpu}", serverDown: "Server unavailable",
+    "nav.read": "Read", "nav.library": "Library", "nav.documents": "Long documents", "nav.voices": "Voices",
+    "nav.words": "Pronunciation", "nav.status": "Server status",
+    "tab.text": "Text", "tab.niqqud": "With niqqud", compare: "Compare all engines",
+    placeholder: "Type or paste Hebrew text here",
+    hint: "[pause 2] adds a 2-second pause. Turn on Dialogue for lines like “Noa: hello”.",
+    preset: "Preset", presetNone: "No preset", savePreset: "Save current settings as a preset", deletePreset: "Delete this preset",
+    presetPrompt: "Name for these settings, e.g. News or Audiobook", presetLoaded: "Loaded the preset “{name}”.",
+    presetSaved: "Saved as “{name}”.", presetDeleteConfirm: "Delete the preset “{name}”?",
+    voice: "Voice", speed: "Speed", speedHint: "Changes the pace without changing the pitch", format: "File format",
+    normalize: "Numbers, dates and abbreviations as words", useCache: "Reuse an earlier identical reading",
+    dialogue: "Dialogue: a voice per speaker", noSpeakers: "No lines like “Name: text” found yet.",
+    advanced: "Advanced",
+    sentencePause: "Pause between sentences", sentencePauseHint: "Silence between sentences, in seconds",
+    "opt.exaggeration": "Expression", "opt.exaggeration.hint": "Low for a flat read, high for a dramatic one",
+    "opt.cfg_weight": "Voice adherence", "opt.cfg_weight.hint": "Low for a calmer read, high to stay closer to the voice",
+    "opt.temperature": "Variation", "opt.temperature.hint": "Higher sounds livelier but may add or skip words",
+    "opt.chatterbox.temperature.hint": "Above 0.6 the model may add words that aren't in the text",
+    "opt.qwen.temperature": "Temperature", "opt.qwen.temperature.hint": "With Variation on: higher is livelier, lower is steadier",
+    "opt.seed": "Seed", "opt.seed.hint": "The same number gives the same reading every time. Empty: a new take each time",
+    "opt.zonos.seed.hint": "Without a recording, the seed picks the voice. Empty: the usual voice",
+    "opt.omnivoice.seed.hint": "For Female and Male the seed picks the speaker. Empty: the usual one",
+    seedRandom: "Random",
+    "opt.steps": "Quality steps", "opt.steps.hint": "More steps take longer and can sound cleaner",
+    "opt.guidance": "Text adherence", "opt.guidance.hint": "Higher follows the text more strictly; too high can sound harsh",
+    "opt.blend": "Blend with Shaul", "opt.blend.hint": "Mixes in Shaul, the voice Kokoro's Hebrew was trained on: clearer Hebrew, less of the chosen voice",
+    "opt.top_p": "Top-p", "opt.top_p.hint": "Lower keeps to the likeliest sounds: steadier, less varied",
+    "opt.top_k": "Top-k", "opt.top_k.hint": "How many candidate sounds it picks from at each step; lower is steadier",
+    "opt.higgs.top_k.hint": "How many candidate sounds it picks from at each step; 0 means no limit",
+    "opt.sampling": "Variation", "opt.sampling.hint": "Off reads the same way every time, clearest and fastest. On is livelier but several times slower",
+    "opt.repetition_penalty": "Repetition penalty", "opt.repetition_penalty.hint": "Above 1 discourages repeated sounds; slower",
+    "opt.sway": "Sway", "opt.sway.hint": "Spends more of the steps on the start of each sound; -1 is F5's default",
+    "opt.pitch_std": "Pitch variation", "opt.pitch_std.hint": "Low for a monotone read, high for a lively one",
+    "opt.emotion": "Emotion",
+    "opt.design_age": "Age", "opt.design_age.hint": "Voice design: for the made-up voices (Female, Male) only",
+    "opt.design_pitch": "Pitch", "opt.design_whisper": "Whisper", "opt.design_accent": "Accent (for English words)",
+    "optv.": "The voice's own",
+    "optv.child": "Child", "optv.teenager": "Teenager", "optv.young adult": "Young adult", "optv.middle-aged": "Middle-aged", "optv.elderly": "Elderly",
+    "optv.very low pitch": "Very low", "optv.low pitch": "Low", "optv.moderate pitch": "Medium", "optv.high pitch": "High", "optv.very high pitch": "Very high",
+    "optv.american accent": "American", "optv.british accent": "British", "optv.australian accent": "Australian", "optv.canadian accent": "Canadian",
+    "optv.indian accent": "Indian", "optv.russian accent": "Russian", "optv.chinese accent": "Chinese", "optv.japanese accent": "Japanese",
+    "optv.korean accent": "Korean", "optv.portuguese accent": "Portuguese",
+    emotion: "Emotion", "emo.neutral": "Neutral", "emo.happy": "Happy", "emo.sad": "Sad", "emo.angry": "Angry",
+    "emo.fear": "Fearful", "emo.surprise": "Surprised",
+    reset: "Reset to defaults", speak: "Read aloud",
+    needText: "Type some text to read.", generating: "Generating… {s}s",
+    liveProgress: "Playing while the rest is generated… {n} sentences ready, {s}s",
+    cachedPlayed: "This text was read before with the same settings, so it played from the library.",
+    noServer: "The server didn't respond. Make sure server.py is running.", serverError: "The server returned error {code}",
+    cutOff: "The connection dropped before the reading finished.",
+    needTextCompare: "Type some text to compare.", comparing: "Comparing: {i} of {n}, {engine}…",
+    compareDone: "Comparison ready: {n} engines{failed}. Each reading is in the library.", compareFailed: ", {f} failed",
+    nothingYet: "Nothing played yet", nothingSub: "Write text and press Read aloud",
+    sentenceOf: "Sentence {i} of {n}", pauseNow: "Pause", play: "Play", pause: "Pause",
+    download: "Download", sentences: "Sentences", audioLen: "{a}s of audio", madeIn: "{a}s of audio, made in {g}s",
+    sentencesHelp: "A sentence sounds wrong? Read it again or edit it, and the full file is rebuilt. LightBlue and Kokoro sound the same every time, so edit the text or add niqqud instead.",
+    playSentence: "Play", redo: "Read again", edit: "Edit", pauseItem: "Pause, {s}s",
+    redoing: "Reading sentence {i} again…", redone: "Sentence {i} was read again and the full file was updated.",
+    libraryHelp: "Every reading is saved here on the server, so it's still here after a refresh or a restart.",
+    search: "Search the library", libEmpty: "Readings you make show up here.", noMatch: "Nothing matches “{q}”.",
+    "kind.dialogue": "Dialogue", "kind.chapter": "Chapter", deleteItemConfirm: "Delete this reading from the library?",
+    deleteItem: "Delete from library", seconds: "{n}s", sentenceCount: "{n} sentences",
+    docHelp: "A TXT, DOCX or PDF file is read chapter by chapter in the background. Headings like “Chapter 3” or “פרק 3” start a new chapter; without headings the text is split into parts of about 3,000 characters. Every chapter is added to the library.",
+    docPick: "Choose a TXT, DOCX or PDF file", docUses: "Read with the voice and settings from the Read screen: {voice}, {speed}×.",
+    docStart: "Read the document", docNeedFile: "Choose a TXT, DOCX or PDF file.", docStartFailed: "Couldn't start reading the document.",
+    jobLine: "{title}: {done} of {total} chapters, {state}{where}", jobNow: ", now: {ch}",
+    "state.running": "in progress", "state.done": "finished", "state.failed": "failed: {err}", "state.cancelled": "stopped",
+    stop: "Stop", zip: "Download all chapters (ZIP)",
+    voicesHelp: "The built-in voices of every engine, plus voices you add. A voice you add is cloned by every engine that can clone.",
+    builtin: "Built-in", custom: "Your voice", use: "Use", inUse: "Selected", fast: "fast", hebrewOnly: "Hebrew only", hebrewOnlyHint: "This engine reads Hebrew only: English words in the text will come out wrong.",
+    deleteVoiceConfirm: "Delete the voice “{name}” from all engines?", voiceDeleted: "The voice “{name}” was deleted.",
+    cantDelete: "Couldn't delete the voice.", deleteVoice: "Delete the voice {name}", voiceCount: "{n} voices",
+    addTitle: "Add a voice", addHelp: "A clean recording of one speaker, 10 to 15 seconds. Up to 5 recordings of the same speaker give a steadier result. WAV, MP3, FLAC or OGG.",
+    voiceName: "Voice name", voiceNamePh: "e.g. Noa", filesPick: "Add recording files (up to 5)",
+    record: "Record", stopRecord: "Stop",
+    trimHint: "Drag the orange edges to keep only the part you want; 8 to 20 seconds shows in green. Only the kept part is checked and saved.",
+    clipLen: "{sel}s of {total}s", volumeUp: "volume +{db} dB", playSel: "Play", stopSel: "Stop",
+    trimSilence: "Trim silence", evenVolume: "Even out volume", undoClip: "Undo changes",
+    checkGoodClip: "Sounds good ({s}s, low background noise).", recordingN: "Recording {i}", deleteRecording: "Delete recording",
+    micBlocked: "The browser blocks the microphone on this address. Record on the PC running the server (http://localhost:8010), or upload a recording.",
+    checkQuality: "Check quality", saveVoice: "Save voice",
+    needNameFile: "Choose a name, and a file or a recording, to save a voice.", max5: "Up to 5 recordings per voice.",
+    savingVoice: "Saving “{name}”…", voiceSaved: "The voice “{name}” was saved and selected.", needFileFirst: "Choose a file or record first.",
+    checkGood: "{file}: sounds good ({s}s, low background noise).",
+    "issue.short": "too short ({s}s); 10 to 15 seconds of speech works best.",
+    "issue.long": "long ({s}s); most engines only use the start.",
+    "issue.clipped": "distorted (recorded too loud). Move back from the mic or lower the input level.",
+    "issue.quiet": "very quiet. Move closer to the mic.",
+    "issue.noisy": "noticeable background noise. Record in a quiet room.",
+    "issue.unreadable": "couldn't read the file.",
+    wordsHelp: "Words an engine says wrong: write how to read them, with niqqud or phonetically. The fix applies to every engine, and also to the word with prefixes like ו, ה, ב, ל (for words of three letters or more).",
+    wordPh: "Word, e.g. Claude", readingPh: "Read as, e.g. קלוד", add: "Add", dictEmpty: "The dictionary is empty.",
+    needBoth: "Write both the word and how to read it.", cantSave: "Couldn't save the word.", wordSaved: "“{w}” will now be read as “{r}”.",
+    refresh: "Refresh", engine: "Engine", runs: "Runs", state: "State", voicesCol: "Voices",
+    "where.local": "On this PC", "where.worker": "Separate process", "where.remote": "Another machine",
+    running: "Running", notResponding: "Not responding", gpuMemory: "GPU memory", gpuOf: "{u} of {t} GB",
+    libraryStat: "Library", readings: "{n} readings", jobsStat: "Documents in progress", accessStat: "Network access",
+    accessKey: "Home network open, key needed from outside", accessOpen: "Open to everyone", statusFailed: "Couldn't get the server status.",
+    noText: "No text to show.", addingNiqqud: "Adding niqqud…",
+    stripsNiqqud: "{name} reads text without niqqud. Niqqud you add is removed before sending, because it confuses this engine.",
+    plainNiqqud: "{name} reads the text as it is, without a niqqud step. Niqqud you type yourself reaches it unchanged.",
+    niqqudFailed: "Couldn't add niqqud. Make sure the server is running.",
+    apiPrompt: "The server asks for an API key (shown in the server window and in api_key.txt):",
+    close: "Close",
+    zonosTitle: "Zonos-Hebrew (optional)",
+    zonosHelp: "Zonos runs in Docker on another machine (see docker/zonos-hebrew). Enter its address to use it; it reads Hebrew only, and offers emotions. The address is saved for the next start.",
+    zonosConnect: "Connect", zonosOff: "Turn off", zonosConnecting: "Connecting…",
+    zonosOn: "Connected: Zonos voices are in the voice list.", zonosNone: "Off. Zonos isn't used.",
+    gpuTitle: "GPU memory",
+    gpuHelp: "Chatterbox, OmniVoice, Higgs, QwenTTS-he, Magpie and F5-TTS keep their models in GPU memory. Unloading frees it; an unloaded engine stays in the voice list and loads again by itself the next time you read with it (20 to 60 seconds).",
+    gpuFree: "Free GPU memory", autoUnload: "Unload an engine unused for", autoOff: "Never", auto10: "10 minutes",
+    auto30: "30 minutes", auto60: "1 hour", auto120: "2 hours", autoUnloadSaved: "Saved.",
+    gpuFreed: "GPU engines unloaded. Each loads again when you read with it.",
+    gpuFreedBusy: "Unloaded, except {names}: still reading. Try again when it's done.",
+    unload: "Unload", load: "Load", loadingShort: "Loading…", unloadedState: "Unloaded, loads on use",
+    engineBusy: "This engine is reading right now. Try again when it's done.",
+    loadingEngine: "Loading {name} first, this takes up to a minute… {s}s",
+    zonosFailed: "Couldn't connect: {err}", fonts: "Fonts", readFont: "Font for the text", readSize: "Text size", uiFont: "Font for menus and buttons",
+  },
+  he: {
+    title: "סטודיו קול",
+    connecting: "מתחבר לשרת…", ready: "מוכן · {gpu}", serverDown: "השרת לא זמין",
+    "nav.read": "הקראה", "nav.library": "ספרייה", "nav.documents": "מסמכים ארוכים", "nav.voices": "קולות",
+    "nav.words": "מילון הגייה", "nav.status": "מצב השרת",
+    "tab.text": "טקסט", "tab.niqqud": "עם ניקוד", compare: "השוואה בין כל המנועים",
+    placeholder: "כתבו או הדביקו כאן טקסט בעברית",
+    hint: "[הפסקה 2] מוסיף הפסקה של שתי שניות. הפעילו דיאלוג לשורות כמו \"נועה: שלום\".",
+    preset: "הגדרות שמורות", presetNone: "ללא", savePreset: "שמירת ההגדרות הנוכחיות", deletePreset: "מחיקת ההגדרות השמורות",
+    presetPrompt: "שם להגדרות האלה, למשל: חדשות או ספר שמע", presetLoaded: "ההגדרות \"{name}\" נטענו.",
+    presetSaved: "ההגדרות נשמרו בשם \"{name}\".", presetDeleteConfirm: "למחוק את ההגדרות \"{name}\"?",
+    voice: "קול", speed: "מהירות", speedHint: "משנה מהירות בלי לשנות את גובה הקול", format: "פורמט קובץ",
+    normalize: "מספרים, תאריכים וקיצורים למילים", useCache: "להשמיע הקראה קודמת זהה",
+    dialogue: "דיאלוג: קול לכל דובר", noSpeakers: "עוד לא נמצאו שורות בצורה \"שם: טקסט\".",
+    advanced: "מתקדם",
+    sentencePause: "הפסקה בין משפטים", sentencePauseHint: "שקט בין משפט למשפט, בשניות",
+    "opt.exaggeration": "הבעה", "opt.exaggeration.hint": "נמוך לקריאה שטוחה, גבוה לדרמטית",
+    "opt.cfg_weight": "היצמדות לקול", "opt.cfg_weight.hint": "נמוך לקריאה רגועה יותר, גבוה לנאמנות לקול הנבחר",
+    "opt.temperature": "גיוון", "opt.temperature.hint": "גבוה נשמע חי יותר, אבל עלול להוסיף או לדלג על מילים",
+    "opt.chatterbox.temperature.hint": "מעל 0.6 המודל עלול להוסיף מילים שלא נכתבו",
+    "opt.qwen.temperature": "טמפרטורה", "opt.qwen.temperature.hint": "כשגיוון דלוק: גבוה חי יותר, נמוך יציב יותר",
+    "opt.seed": "Seed", "opt.seed.hint": "אותו מספר נותן אותה קריאה בכל פעם. ריק: גרסה חדשה בכל פעם",
+    "opt.zonos.seed.hint": "בלי הקלטה, ה-seed בוחר את הקול. ריק: הקול הרגיל",
+    "opt.omnivoice.seed.hint": "באישה ובגבר ה-seed בוחר את הדובר. ריק: הדובר הרגיל",
+    seedRandom: "אקראי",
+    "opt.steps": "צעדי איכות", "opt.steps.hint": "יותר צעדים לוקחים יותר זמן ויכולים להישמע נקיים יותר",
+    "opt.guidance": "היצמדות לטקסט", "opt.guidance.hint": "גבוה נצמד לטקסט חזק יותר; גבוה מדי עלול להישמע צורם",
+    "opt.blend": "מיזוג עם שאול", "opt.blend.hint": "מערבב את שאול, הקול שעליו אומנה העברית של Kokoro: עברית ברורה יותר, פחות מהקול הנבחר",
+    "opt.top_p": "Top-p", "opt.top_p.hint": "נמוך נצמד לצלילים הסבירים ביותר: יציב יותר, פחות מגוון",
+    "opt.top_k": "Top-k", "opt.top_k.hint": "מבין כמה צלילים אפשריים הוא בוחר בכל צעד; נמוך יציב יותר",
+    "opt.higgs.top_k.hint": "מבין כמה צלילים אפשריים הוא בוחר בכל צעד; 0 בלי הגבלה",
+    "opt.sampling": "גיוון", "opt.sampling.hint": "כבוי: קורא אותו דבר בכל פעם, הכי ברור ומהיר. דלוק: חי יותר אבל איטי פי כמה",
+    "opt.repetition_penalty": "עונש על חזרות", "opt.repetition_penalty.hint": "מעל 1 מונע צלילים חוזרים; איטי יותר",
+    "opt.sway": "Sway", "opt.sway.hint": "מקדיש יותר מהצעדים לתחילת כל צליל; ברירת המחדל של F5 היא 1-",
+    "opt.pitch_std": "גיוון בגובה הקול", "opt.pitch_std.hint": "נמוך לקריאה מונוטונית, גבוה לקריאה חיה",
+    "opt.emotion": "רגש",
+    "opt.design_age": "גיל", "opt.design_age.hint": "עיצוב קול: רק לקולות המומצאים (אישה, גבר)",
+    "opt.design_pitch": "גובה קול", "opt.design_whisper": "לחישה", "opt.design_accent": "מבטא (למילים באנגלית)",
+    "optv.": "כמו הקול",
+    "optv.child": "ילד", "optv.teenager": "נער", "optv.young adult": "צעיר", "optv.middle-aged": "בגיל העמידה", "optv.elderly": "מבוגר",
+    "optv.very low pitch": "נמוך מאוד", "optv.low pitch": "נמוך", "optv.moderate pitch": "בינוני", "optv.high pitch": "גבוה", "optv.very high pitch": "גבוה מאוד",
+    "optv.american accent": "אמריקאי", "optv.british accent": "בריטי", "optv.australian accent": "אוסטרלי", "optv.canadian accent": "קנדי",
+    "optv.indian accent": "הודי", "optv.russian accent": "רוסי", "optv.chinese accent": "סיני", "optv.japanese accent": "יפני",
+    "optv.korean accent": "קוריאני", "optv.portuguese accent": "פורטוגזי",
+    emotion: "רגש", "emo.neutral": "ניטרלי", "emo.happy": "שמח", "emo.sad": "עצוב", "emo.angry": "כועס",
+    "emo.fear": "מפחד", "emo.surprise": "מופתע",
+    reset: "החזרת ברירות מחדל", speak: "הקרא",
+    needText: "כתבו טקסט כדי להקריא.", generating: "מייצר שמע… {s} שניות",
+    liveProgress: "מקריא בזמן שהשאר נוצר… {n} משפטים מוכנים, {s} שניות",
+    cachedPlayed: "הטקסט הזה כבר הוקרא באותן הגדרות, והושמע מהספרייה.",
+    noServer: "השרת לא הגיב. ודאו ש-server.py רץ.", serverError: "השרת החזיר שגיאה {code}",
+    cutOff: "החיבור לשרת נקטע לפני שההקראה הסתיימה.",
+    needTextCompare: "כתבו טקסט כדי להשוות.", comparing: "משווה: {i} מתוך {n}, {engine}…",
+    compareDone: "ההשוואה מוכנה: {n} מנועים{failed}. כל הקראה נמצאת בספרייה.", compareFailed: ", {f} נכשלו",
+    nothingYet: "עוד לא הושמע כלום", nothingSub: "כתבו טקסט ולחצו על הקרא",
+    sentenceOf: "משפט {i} מתוך {n}", pauseNow: "הפסקה", play: "נגן", pause: "השהה",
+    download: "הורדה", sentences: "משפטים", audioLen: "{a} שנ׳ שמע", madeIn: "{a} שנ׳ שמע, נוצר ב-{g} שנ׳",
+    sentencesHelp: "משפט שנשמע לא טוב? קראו אותו מחדש או ערכו אותו, והקובץ המלא ייבנה מחדש. ב-LightBlue וב-Kokoro קריאה מחדש נשמעת זהה, אז ערכו את הטקסט או הוסיפו ניקוד.",
+    playSentence: "השמעה", redo: "קריאה מחדש", edit: "עריכה", pauseItem: "הפסקה של {s} שנ׳",
+    redoing: "קורא מחדש את משפט {i}…", redone: "משפט {i} נקרא מחדש והקובץ המלא עודכן.",
+    libraryHelp: "כל הקראה נשמרת כאן בשרת, ונשארת גם אחרי רענון הדף או הפעלה מחדש.",
+    search: "חיפוש בספרייה", libEmpty: "ההקראות שתיצרו יופיעו כאן.", noMatch: "אין תוצאות עבור \"{q}\".",
+    "kind.dialogue": "דיאלוג", "kind.chapter": "פרק", deleteItemConfirm: "למחוק את ההקראה מהספרייה?",
+    deleteItem: "מחיקה מהספרייה", seconds: "{n} שנ׳", sentenceCount: "{n} משפטים",
+    docHelp: "קובץ TXT, DOCX או PDF יוקרא פרק אחר פרק ברקע. כותרות כמו \"פרק 3\" מתחילות פרק חדש; בלי כותרות, הטקסט מחולק לחלקים של כ-3,000 תווים. כל פרק נוסף לספרייה.",
+    docPick: "בחירת קובץ TXT, DOCX או PDF", docUses: "יוקרא בקול ובהגדרות של מסך ההקראה: {voice}, מהירות {speed}×.",
+    docStart: "הקראת המסמך", docNeedFile: "בחרו קובץ TXT, DOCX או PDF.", docStartFailed: "לא ניתן להתחיל את ההקראה.",
+    jobLine: "{title}: {done} מתוך {total} פרקים, {state}{where}", jobNow: ", עכשיו: {ch}",
+    "state.running": "בעבודה", "state.done": "הסתיים", "state.failed": "נכשל: {err}", "state.cancelled": "נעצר",
+    stop: "עצירה", zip: "הורדת כל הפרקים (ZIP)",
+    voicesHelp: "הקולות המובנים של כל מנוע, וגם קולות שהוספתם. קול שתוסיפו ישובט בכל מנוע שיודע לשבט קול.",
+    builtin: "מובנה", custom: "קול שלך", use: "בחירה", inUse: "נבחר", fast: "מהיר", hebrewOnly: "עברית בלבד", hebrewOnlyHint: "המנוע הזה קורא עברית בלבד: מילים באנגלית בטקסט ייצאו משובשות.",
+    deleteVoiceConfirm: "למחוק את הקול \"{name}\" מכל המנועים?", voiceDeleted: "הקול \"{name}\" נמחק.",
+    cantDelete: "לא ניתן למחוק את הקול.", deleteVoice: "מחיקת הקול {name}", voiceCount: "{n} קולות",
+    addTitle: "הוספת קול", addHelp: "הקלטה נקייה של דובר אחד, 10 עד 15 שניות. עד 5 הקלטות של אותו דובר נותנות תוצאה יציבה יותר. WAV, MP3, FLAC או OGG.",
+    voiceName: "שם הקול", voiceNamePh: "למשל: נועה", filesPick: "הוספת קובצי הקלטה (עד 5)",
+    record: "הקלטה", stopRecord: "סיום",
+    trimHint: "גררו את הקצוות הכתומים כדי להשאיר רק את החלק הרצוי; בין 8 ל-20 שניות הזמן מופיע בירוק. רק החלק שנשאר נבדק ונשמר.",
+    clipLen: "{sel} מתוך {total} שנ׳", volumeUp: "עוצמה +{db} dB", playSel: "השמעה", stopSel: "עצירה",
+    trimSilence: "חיתוך שקט", evenVolume: "איזון עוצמה", undoClip: "ביטול שינויים",
+    checkGoodClip: "נשמע טוב ({s} שנ׳, רעש רקע נמוך).", recordingN: "הקלטה {i}", deleteRecording: "מחיקת ההקלטה",
+    micBlocked: "הדפדפן חוסם את המיקרופון בכתובת הזו. הקליטו מהמחשב שמריץ את השרת (http://localhost:8010), או העלו קובץ הקלטה.",
+    checkQuality: "בדיקת איכות", saveVoice: "שמירת הקול",
+    needNameFile: "בחרו שם, וקובץ או הקלטה, כדי לשמור קול.", max5: "אפשר עד 5 הקלטות לקול אחד.",
+    savingVoice: "שומר את הקול \"{name}\"…", voiceSaved: "הקול \"{name}\" נשמר ונבחר.", needFileFirst: "בחרו קובץ או הקליטו קודם.",
+    checkGood: "{file}: נשמע טוב ({s} שנ׳, רעש רקע נמוך).",
+    "issue.short": "קצר מדי ({s} שנ׳); עדיף 10 עד 15 שניות של דיבור.",
+    "issue.long": "ארוך ({s} שנ׳); רוב המנועים משתמשים רק בתחילת ההקלטה.",
+    "issue.clipped": "יש עיוות (הקלטה חזקה מדי). הרחיקו מעט את המיקרופון או הנמיכו את עוצמת הקלט.",
+    "issue.quiet": "ההקלטה שקטה מאוד. התקרבו למיקרופון.",
+    "issue.noisy": "יש רעש רקע משמעותי. הקליטו בחדר שקט.",
+    "issue.unreadable": "לא ניתן לקרוא את הקובץ.",
+    wordsHelp: "מילים שמנוע כלשהו מבטא לא נכון: כתבו איך לקרוא אותן, עם ניקוד או בכתיב פונטי. התיקון חל על כל המנועים, וגם על המילה עם תחיליות כמו ו, ה, ב, ל (במילים של שלוש אותיות ומעלה).",
+    wordPh: "המילה, למשל: Claude", readingPh: "איך לקרוא, למשל: קלוד", add: "הוספה", dictEmpty: "המילון ריק.",
+    needBoth: "כתבו גם את המילה וגם איך לקרוא אותה.", cantSave: "לא ניתן לשמור את המילה.", wordSaved: "\"{w}\" יוקרא מעכשיו \"{r}\".",
+    refresh: "רענון", engine: "מנוע", runs: "היכן רץ", state: "מצב", voicesCol: "קולות",
+    "where.local": "במחשב הזה", "where.worker": "תהליך נפרד", "where.remote": "מחשב אחר",
+    running: "פועל", notResponding: "לא מגיב", gpuMemory: "זיכרון GPU", gpuOf: "{u} מתוך {t} GB",
+    libraryStat: "ספרייה", readings: "{n} הקראות", jobsStat: "מסמכים בעבודה", accessStat: "גישה מהרשת",
+    accessKey: "פתוח ברשת הביתית, מפתח נדרש מבחוץ", accessOpen: "פתוחה לכולם", statusFailed: "לא ניתן לקבל את מצב השרת.",
+    noText: "אין טקסט להצגה.", addingNiqqud: "מוסיף ניקוד…",
+    stripsNiqqud: "{name} קורא טקסט בלי ניקוד, וניקוד שתוסיפו יוסר לפני השליחה (ניקוד משבש אותו).",
+    plainNiqqud: "{name} קורא את הטקסט כמו שהוא, בלי שלב ניקוד. ניקוד שתוסיפו בעצמכם יגיע אליו כמו שהוא.",
+    niqqudFailed: "לא ניתן להוסיף ניקוד. ודאו שהשרת רץ.",
+    apiPrompt: "השרת מבקש מפתח API (מופיע בחלון של השרת ובקובץ api_key.txt):",
+    close: "סגירה",
+    zonosTitle: "Zonos-Hebrew (לא חובה)",
+    zonosHelp: "Zonos רץ ב-Docker על מחשב אחר (ראו docker/zonos-hebrew). כתבו את הכתובת שלו כדי להשתמש בו; הוא קורא עברית בלבד ומציע רגשות. הכתובת נשמרת להפעלה הבאה.",
+    zonosConnect: "התחברות", zonosOff: "כיבוי", zonosConnecting: "מתחבר…",
+    zonosOn: "מחובר: הקולות של Zonos נמצאים ברשימת הקולות.", zonosNone: "כבוי. לא נעשה שימוש ב-Zonos.",
+    gpuTitle: "זיכרון GPU",
+    gpuHelp: "Chatterbox,‏ OmniVoice,‏ Higgs,‏ QwenTTS-he,‏ Magpie ו-F5-TTS מחזיקים את המודלים שלהם בזיכרון ה-GPU. פריקה משחררת אותו; מנוע שנפרק נשאר ברשימת הקולות ונטען מחדש לבד בפעם הבאה שמקריאים איתו (20 עד 60 שניות).",
+    gpuFree: "שחרור זיכרון GPU", autoUnload: "פריקת מנוע שלא היה בשימוש במשך", autoOff: "אף פעם", auto10: "10 דקות",
+    auto30: "30 דקות", auto60: "שעה", auto120: "שעתיים", autoUnloadSaved: "נשמר.",
+    gpuFreed: "מנועי ה-GPU נפרקו. כל אחד ייטען מחדש כשתקריאו איתו.",
+    gpuFreedBusy: "נפרקו, חוץ מ-{names}: עדיין מקריא. נסו שוב כשיסיים.",
+    unload: "פריקה", load: "טעינה", loadingShort: "טוען…", unloadedState: "פרוק, ייטען בשימוש",
+    engineBusy: "המנוע מקריא כרגע. נסו שוב כשיסיים.",
+    loadingEngine: "טוען קודם את {name}, זה לוקח עד דקה… {s} שניות",
+    zonosFailed: "לא ניתן להתחבר: {err}", fonts: "גופנים", readFont: "גופן הטקסט", readSize: "גודל הטקסט", uiFont: "גופן התפריטים והכפתורים",
+  },
+};
+const storage = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+                  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+let lang = storage.get("kol-lang") || ((navigator.language || "").startsWith("he") ? "he" : "en");
+const t = (key, vars = {}) => (STR[lang][key] ?? STR.en[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+
+const $ = (id) => document.getElementById(id);
+const textEl = $("text"), niqqudEl = $("niqqud");
+const audio = $("audio"), canvas = $("wave");
+const DEFAULTS = { speed: 1, sentencePause: 0.25 };
+const fmt = (id, v) => id === "speed" ? `${Number(v).toFixed(2)}×` : Number(v).toFixed(2);
+const secs = (n) => t("seconds", { n: Number(n).toFixed(1) });
+const clock = (s) => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const MIME = { wav: "audio/wav", mp3: "audio/mpeg", flac: "audio/flac", opus: "audio/ogg" };
+let libraryItems = [];   // summaries from GET /library, newest first
+let current = null;      // the open library item: {meta, url, peaks, bounds}
+let niqqudFor = null, health = null, statusData = null, job = null;
+const format = () => $("format").value;
+
+function applyLanguage() {
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === "he" ? "rtl" : "ltr";
+  document.title = t("title");
+  document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el => el.placeholder = t(el.dataset.i18nPlaceholder));
+  document.querySelectorAll("[data-i18n-title]").forEach(el => { el.title = t(el.dataset.i18nTitle); el.setAttribute("aria-label", el.title); });
+  document.querySelectorAll("[data-lang]").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang));
+  $("toastClose").setAttribute("aria-label", t("close"));
+  // Everything built from data gets rebuilt in the new language.
+  renderHealth(); updateCount(); renderPresets(presets, $("preset").value);
+  if (voices.length) renderVoices(voices); else renderVoiceList();
+  renderHistory(); renderLexicon(lexicon); renderStatus(); renderZonos(); renderJob(); renderClips(); updateDocUses();
+  if (current) { renderSentences(current.meta); updateNow(); }
+  else updateNow();
+  if (!niqqudEl.hidden) { niqqudFor = null; showNiqqud(true); }
+  draw();
+}
+document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click", () => {
+  lang = b.dataset.lang; storage.set("kol-lang", lang); applyLanguage();
+}));
+
+// ---------- Server calls ----------
+// From outside the home network the server wants the API key (api_key.txt); asked for once, then kept.
+async function api(url, opts = {}) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const key = storage.get("kol-api-key");
+    const headers = { ...(opts.headers || {}), ...(key ? { "X-API-Key": key } : {}) };
+    const r = await fetch(url, { ...opts, headers });
+    if (r.status !== 401) return r;
+    const entered = prompt(t("apiPrompt"));
+    if (!entered) return r;
+    storage.set("kol-api-key", entered.trim());
+  }
+  return fetch(url, opts);
+}
+const postJSON = (url, body, method = "POST") =>
+  api(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+// For plain links (downloads), which can't send headers: the key goes in the URL.
+function withKey(url) {
+  const key = storage.get("kol-api-key");
+  return key ? `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(key)}` : url;
+}
+const errorText = (e) => e.message === "Failed to fetch" ? t("noServer") : e.message;
+
+// ---------- Messages ----------
+let toastTimer = null;
+function setStatus(msg, isError = false, sticky = false) {
+  clearTimeout(toastTimer);
+  $("toast").hidden = !msg;
+  $("toastText").textContent = msg || "";
+  $("toast").className = "toast" + (isError ? " error" : "");
+  if (msg && !isError && !sticky) toastTimer = setTimeout(() => $("toast").hidden = true, 6000);
+}
+$("toastClose").addEventListener("click", () => setStatus(""));
+
+// ---------- Sections ----------
+function go(view) {
+  document.querySelectorAll("[data-view]").forEach(s => s.hidden = s.dataset.view !== view);
+  document.querySelectorAll(".rail [data-go]").forEach(b => b.dataset.go === view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+  storage.set("kol-view", view);
+  if (view === "status") { loadStatus(); loadZonos(); }
+  if (view === "documents") updateDocUses();
+  $("main").scrollTop = 0;
+}
+document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => go(b.dataset.go)));
+
+// ---------- Server status ----------
+function renderHealth() {
+  if (health === null) { $("device").textContent = t("connecting"); return; }
+  $("dot").className = "dot " + (health ? "ok" : "down");
+  $("device").textContent = health ? t("ready", { gpu: health.gpu || health.device }) : t("serverDown");
+}
+api("/health").then(r => r.json()).then(h => { health = h; renderHealth(); })
+  .catch(() => { health = false; renderHealth(); });
+
+async function loadStatus() {
+  try { statusData = await (await api("/status")).json(); } catch { statusData = false; }
+  renderStatus();
+}
+function renderStatus() {
+  const box = $("statusBody");
+  if (statusData === null) { box.innerHTML = ""; return; }
+  if (!statusData) { box.innerHTML = `<p class="muted">${t("statusFailed")}</p>`; return; }
+  const s = statusData, esc = escapeHtml;
+  const gpu = s.gpu ? `<div class="panel stat"><div class="label">${t("gpuMemory")}</div><div class="value">${t("gpuOf", { u: s.gpu.used_gb, t: s.gpu.total_gb })}</div>
+      <div class="progress"><div style="width:${Math.round(100 * s.gpu.used_gb / s.gpu.total_gb)}%"></div></div><div class="muted small" style="margin-top:6px">${esc(s.gpu.name)}</div></div>` : "";
+  box.innerHTML = `<div class="stat-grid">${gpu}
+      <div class="panel stat"><div class="label">${t("libraryStat")}</div><div class="value">${t("readings", { n: s.library_items })}</div></div>
+      <div class="panel stat"><div class="label">${t("jobsStat")}</div><div class="value">${s.jobs_running}</div></div>
+      <div class="panel stat"><div class="label">${t("accessStat")}</div><div class="value" style="font-size:14px;font-weight:500">${s.auth ? t("accessKey") : t("accessOpen")}</div></div>
+    </div>
+    <div class="panel"><table><thead><tr><th>${t("engine")}</th><th>${t("runs")}</th><th>${t("voicesCol")}</th><th>${t("state")}</th><th></th></tr></thead><tbody>
+    ${s.engines.map(e => `<tr><td>${esc(e.label)}</td><td class="muted">${t("where." + e.kind)}${e.gpu ? " · GPU" : ""}</td><td class="num">${e.voices}</td>
+      <td>${e.gpu && !e.loaded ? `<span class="dot" style="display:inline-block;margin-inline-end:8px"></span><span class="muted">${t("unloadedState")}</span>`
+        : `<span class="dot ${e.alive ? "ok" : "down"}" style="display:inline-block;margin-inline-end:8px"></span>${e.alive ? t("running") : t("notResponding")}`}</td>
+      <td>${e.gpu ? `<button type="button" class="btn small" data-engine-action="${e.loaded ? "unload" : "load"}" data-engine="${esc(e.name)}">${t(e.loaded ? "unload" : "load")}</button>` : ""}</td></tr>`).join("")}
+    </tbody></table></div>`;
+  if (document.activeElement !== $("autoUnload")) $("autoUnload").value = String(s.auto_unload_minutes ?? 30);
+}
+$("statusRefresh").addEventListener("click", loadStatus);
+
+// GPU memory: unload engines by hand or after a while unused; an unloaded engine loads by itself
+// on its next reading (the player says so while it does).
+async function engineAction(action, name, button) {
+  button.disabled = true;
+  if (action === "load") button.textContent = t("loadingShort");
+  try {
+    const r = await api(`/engines/${encodeURIComponent(name)}/${action}`, { method: "POST" });
+    const data = await r.json();
+    if (r.status === 409) throw new Error(t("engineBusy"));
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    statusData = data;
+    renderStatus();
+  } catch (e) { setStatus(errorText(e), true); loadStatus(); }
+}
+$("statusBody").addEventListener("click", e => {
+  const b = e.target.closest("[data-engine-action]");
+  if (b) engineAction(b.dataset.engineAction, b.dataset.engine, b);
+});
+$("gpuFree").addEventListener("click", async () => {
+  $("gpuFree").disabled = true;
+  try {
+    const r = await api("/gpu/free", { method: "POST" });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    statusData = data;
+    renderStatus();
+    setStatus(data.busy.length ? t("gpuFreedBusy", { names: data.busy.join(", ") }) : t("gpuFreed"));
+  } catch (e) { setStatus(errorText(e), true); }
+  finally { $("gpuFree").disabled = false; }
+});
+$("autoUnload").addEventListener("change", async () => {
+  try {
+    const r = await postJSON("/settings/auto-unload", { minutes: Number($("autoUnload").value) }, "PUT");
+    if (!r.ok) throw new Error(t("serverError", { code: r.status }));
+    setStatus(t("autoUnloadSaved"));
+  } catch (e) { setStatus(errorText(e), true); }
+});
+async function unloadedEngine(voice) {
+  const name = voice.engine;
+  try {
+    statusData = await (await api("/status")).json();
+    const e = statusData.engines.find(e => e.name === name);
+    return e && e.gpu && !e.loaded ? e.label : null;
+  } catch { return null; }
+}
+
+// Zonos-Hebrew: optional engine on another machine, connected or dropped without a restart.
+let zonos = null;
+async function loadZonos() {
+  try { zonos = await (await api("/settings/zonos")).json(); } catch { zonos = null; }
+  renderZonos();
+}
+function renderZonos(busy = false) {
+  const state = $("zonosState");
+  if (!zonos) { state.textContent = ""; return; }
+  if (document.activeElement !== $("zonosUrl") && !busy) $("zonosUrl").value = zonos.url;
+  $("zonosOff").hidden = !zonos.url;
+  state.className = "small " + (zonos.error ? "muted" : "");
+  state.style.color = busy ? "" : zonos.error ? "var(--error)" : zonos.connected ? "var(--ok)" : "";
+  state.textContent = busy ? t("zonosConnecting") : zonos.error ? t("zonosFailed", { err: zonos.error })
+                    : zonos.connected ? t("zonosOn") : t("zonosNone");
+}
+async function setZonos(url) {
+  $("zonosSave").disabled = $("zonosOff").disabled = true;
+  renderZonos(true);
+  try {
+    const r = await postJSON("/settings/zonos", { url }, "PUT");
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    zonos = data;
+    renderVoices(await (await api("/voices")).json());
+    loadStatus();
+  } catch (e) { setStatus(errorText(e), true); }
+  finally { $("zonosSave").disabled = $("zonosOff").disabled = false; renderZonos(); }
+}
+$("zonosSave").addEventListener("click", () => setZonos($("zonosUrl").value.trim()));
+$("zonosOff").addEventListener("click", () => { $("zonosUrl").value = ""; setZonos(""); });
+$("zonosUrl").addEventListener("keydown", e => { if (e.key === "Enter") $("zonosSave").click(); });
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+// ---------- Text ----------
+textEl.value = storage.get("kol-draft") ?? "שלום! זהו שרת הקראה שרץ על המחשב שלך. כתבו כל טקסט בעברית, ולחצו על הקרא.";
+function updateCount() {
+  $("count").textContent = `${textEl.value.length.toLocaleString("en")} / 5,000`;
+}
+textEl.addEventListener("input", () => { updateCount(); storage.set("kol-draft", textEl.value); });
+
+// Sliders
+for (const id of Object.keys(DEFAULTS)) {
+  const input = $(id), out = $(id + "Out");
+  input.addEventListener("input", () => { out.textContent = fmt(id, input.value); if (id === "speed") updateDocUses(); });
+}
+$("reset").addEventListener("click", () => {
+  for (const [id, v] of Object.entries(DEFAULTS)) { $(id).value = v; $(id + "Out").textContent = fmt(id, v); }
+  delete engineOpts[selectedVoice().engine];
+  saveEngineOpts();
+  renderEngineOptions();
+});
+
+// ---------- Per-engine settings (GET /options): each engine's own controls in Advanced ----------
+// engineOpts keeps only values changed from the defaults, per engine: {engine: {key: value}}.
+let optionSpecs = {};
+let engineOpts = (() => { try { return JSON.parse(storage.get("kol-engine-opts") || "{}"); } catch { return {}; } })();
+const saveEngineOpts = () => storage.set("kol-engine-opts", JSON.stringify(engineOpts));
+const optText = (engine, key, suffix = "") => {
+  const specific = `opt.${engine}.${key}${suffix}`;
+  return STR[lang][specific] ?? STR.en[specific] ?? t(`opt.${key}${suffix}`);
+};
+const optValueLabel = (key, value) => key === "emotion" ? t(`emo.${value}`) : t(`optv.${value}`);
+const fmtOpt = (spec, v) => spec.key === "blend" ? `${Math.round(v)}%`
+  : Number.isInteger(spec.step) ? String(Math.round(v)) : Number(v).toFixed(2);
+function setEngineOpt(engine, spec, value) {
+  const opts = engineOpts[engine] = engineOpts[engine] || {};
+  if (value === spec.default || value === "" || value == null) delete opts[spec.key];
+  else opts[spec.key] = value;
+  if (!Object.keys(opts).length) delete engineOpts[engine];
+  saveEngineOpts();
+}
+function renderEngineOptions() {
+  const box = $("engineOptions"), engine = selectedVoice().engine, specs = optionSpecs[engine] || [];
+  const values = engineOpts[engine] || {};
+  box.innerHTML = "";
+  for (const spec of specs) {
+    const id = `opt-${spec.key}`, value = values[spec.key] ?? spec.default;
+    const field = document.createElement(spec.type === "toggle" ? "label" : "div");
+    const hint = optText(engine, spec.key, ".hint");
+    const hintHtml = hint !== `opt.${spec.key}.hint` ? `<p class="hint">${escapeHtml(hint)}</p>` : "";
+    const label = escapeHtml(optText(engine, spec.key));
+    if (spec.type === "range") {
+      field.className = "field";
+      field.innerHTML = `<label for="${id}"><span>${label}</span><output>${fmtOpt(spec, value)}</output></label>
+        <input type="range" id="${id}" min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${value}">${hintHtml}`;
+      const input = field.querySelector("input"), out = field.querySelector("output");
+      input.addEventListener("input", () => { out.textContent = fmtOpt(spec, +input.value); setEngineOpt(engine, spec, +input.value); });
+    } else if (spec.type === "select") {
+      field.className = "field";
+      field.innerHTML = `<label for="${id}">${label}</label><select id="${id}"></select>${hintHtml}`;
+      const sel = field.querySelector("select");
+      for (const c of spec.choices) sel.append(new Option(optValueLabel(spec.key, c), c));
+      sel.value = value;
+      sel.addEventListener("change", () => setEngineOpt(engine, spec, sel.value));
+    } else if (spec.type === "toggle") {
+      field.className = "switch";
+      field.innerHTML = `<span>${label}</span><input type="checkbox" id="${id}"${value ? " checked" : ""}>`;
+      field.querySelector("input").addEventListener("change", e => setEngineOpt(engine, spec, e.target.checked));
+      box.append(field);
+      if (hintHtml) box.insertAdjacentHTML("beforeend", hintHtml);
+      continue;
+    } else if (spec.type === "seed") {
+      field.className = "field";
+      field.innerHTML = `<label for="${id}">${label}</label>
+        <input type="number" id="${id}" min="0" step="1" placeholder="${escapeHtml(t("seedRandom"))}" value="${value ?? ""}">${hintHtml}`;
+      const input = field.querySelector("input");
+      input.addEventListener("change", () => setEngineOpt(engine, spec, input.value === "" ? null : Math.max(0, Math.round(+input.value))));
+    }
+    box.append(field);
+  }
+}
+api("/options").then(r => r.json()).then(d => { optionSpecs = d; renderEngineOptions(); }).catch(() => {});
+
+// ---------- Voices: ids are "<engine>/<name>" ----------
+const voiceSel = $("voice");
+const FAST_ENGINES = new Set(["lightblue", "blue25", "kokoro"]);
+// Looked up by voice id first (names can repeat across engines), then by name.
+const VOICE_LABELS = {
+  he: { default: "ברירת מחדל", female: "אישה", male: "גבר", shaul: "שאול",
+        "kokoro/heart_shaul": "Heart + שאול", "kokoro/bella_shaul": "Bella + שאול",
+        "kokoro/emma_shaul": "Emma + שאול", "kokoro/michael_shaul": "Michael + שאול",
+        "blue25/female": "אישה (עברית)", "blue25/libri_female_1088": "Christabel", "blue25/libri_female_6147": "Liberty",
+        "blue25/libri_male_6209": "Decker", "blue25/libri_male_8088": "Jason" },
+  en: { default: "Default", female: "Female", male: "Male",
+        "kokoro/heart_shaul": "Heart + Shaul", "kokoro/bella_shaul": "Bella + Shaul",
+        "kokoro/emma_shaul": "Emma + Shaul", "kokoro/michael_shaul": "Michael + Shaul",
+        "blue25/female": "Female (Hebrew)", "blue25/libri_female_1088": "Christabel", "blue25/libri_female_6147": "Liberty",
+        "blue25/libri_male_6209": "Decker", "blue25/libri_male_8088": "Jason" },
+};
+let voices = [];
+const selectedVoice = () => voices.find(v => v.id === voiceSel.value) || { engine: "chatterbox", name: "default", builtin: true, options: [] };
+function voiceLabel(v) {
+  const known = VOICE_LABELS[lang][v.id] || VOICE_LABELS[lang][v.name];
+  if (known) return known;
+  const name = v.name.replaceAll("_", " ");
+  return /^[a-z]/.test(name) ? name[0].toUpperCase() + name.slice(1) : name;
+}
+const engineLabel = (v) => FAST_ENGINES.has(v.engine) ? `${v.engine_label} (${t("fast")})`
+  : v.hebrew_only ? `${v.engine_label} (${t("hebrewOnly")})` : (v.engine_label || v.engine);
+const engines = () => [...new Set(voices.map(v => v.engine))];
+
+function renderVoices(list, select) {
+  voices = list;
+  const keep = select ?? voiceSel.value ?? storage.get("kol-voice");
+  voiceSel.innerHTML = "";
+  for (const engine of engines()) {
+    const group = document.createElement("optgroup");
+    group.label = engineLabel(voices.find(v => v.engine === engine));
+    for (const v of voices.filter(v => v.engine === engine)) group.append(new Option(voiceLabel(v), v.id));
+    voiceSel.append(group);
+  }
+  const ids = voices.map(v => v.id), saved = storage.get("kol-voice");
+  voiceSel.value = ids.includes(keep) ? keep : ids.includes(saved) ? saved : ids.includes("lightblue/noa") ? "lightblue/noa" : ids[0];
+  onVoiceChange();
+  if ($("dialogue").checked) refreshSpeakers();
+}
+function onVoiceChange() {
+  const v = selectedVoice();
+  storage.set("kol-voice", v.id);
+  $("engineTag").textContent = v.engine_label || "";
+  $("hebrewOnlyHint").hidden = !v.hebrew_only;
+  renderEngineOptions();
+  renderVoiceList();
+  updateDocUses();
+  if (!niqqudEl.hidden) showNiqqud(true);
+}
+voiceSel.addEventListener("change", onVoiceChange);
+api("/voices").then(r => r.json()).then(list => { renderVoices(list); refreshLibrary(); }).catch(() => refreshLibrary());
+
+// The Voices screen: every engine's voices, with "Use" and (for your own voices) delete.
+function renderVoiceList() {
+  const box = $("voiceList");
+  box.innerHTML = "";
+  for (const engine of engines()) {
+    const list = voices.filter(v => v.engine === engine);
+    const block = document.createElement("div");
+    block.className = "panel engine-block";
+    block.innerHTML = `<h2>${escapeHtml(engineLabel(list[0]))}<span>${t("voiceCount", { n: list.length })}</span></h2><ul class="list"></ul>`;
+    for (const v of list) {
+      const li = document.createElement("li"), chosen = v.id === voiceSel.value;
+      li.innerHTML = `<span class="grow"></span><span class="tag ${v.builtin ? "" : "accent"}">${v.builtin ? t("builtin") : t("custom")}</span>`;
+      li.querySelector(".grow").textContent = voiceLabel(v);
+      const use = document.createElement("button");
+      use.type = "button"; use.className = "btn" + (chosen ? " primary" : "");
+      use.textContent = chosen ? t("inUse") : t("use");
+      use.addEventListener("click", () => { voiceSel.value = v.id; onVoiceChange(); go("read"); });
+      li.append(use);
+      if (!v.builtin) {
+        const del = document.createElement("button");
+        del.type = "button"; del.className = "btn icon-btn danger"; del.title = t("deleteVoice", { name: v.name });
+        del.setAttribute("aria-label", del.title);
+        del.innerHTML = '<svg><use href="#i-trash"/></svg>';
+        del.addEventListener("click", () => deleteVoice(v.name));
+        li.append(del);
+      }
+      block.querySelector("ul").append(li);
+    }
+    box.append(block);
+  }
+}
+async function deleteVoice(name) {
+  if (!confirm(t("deleteVoiceConfirm", { name }))) return;
+  const r = await api(`/voices/${encodeURIComponent(name)}`, { method: "DELETE" });
+  if (r.ok) { renderVoices(await r.json()); setStatus(t("voiceDeleted", { name })); }
+  else setStatus(t("cantDelete"), true);
+}
+
+$("uploadVoice").addEventListener("click", async () => {
+  const name = $("voiceName").value.trim(), files = voiceFiles();
+  if (!name || !files.length) { setStatus(t("needNameFile"), true); return; }
+  if (files.length > 5) { setStatus(t("max5"), true); return; }
+  const btn = $("uploadVoice");
+  btn.disabled = true;
+  setStatus(t("savingVoice", { name }), false, true);
+  try {
+    const body = new FormData();
+    body.append("name", name);
+    for (const [f, fileName] of files) body.append("files", f, fileName);
+    const r = await api("/voices", { method: "POST", body });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    renderVoices(data, `${selectedVoice().engine}/${name}`);
+    $("voiceName").value = "";
+    stopClip(); clips.length = 0; renderClips();
+    setStatus(t("voiceSaved", { name }));
+  } catch (e) {
+    setStatus(errorText(e), true);
+  } finally { btn.disabled = false; }
+});
+
+// ---------- Presets: named settings kept on the server, so the phone and the PC share them ----------
+const PRESET_FIELDS = ["speed", "sentencePause"];
+function currentSettings() {
+  const s = { voice: voiceSel.value, format: format(), normalize: $("normalize").checked,
+              options: JSON.parse(JSON.stringify(engineOpts)) };
+  for (const id of PRESET_FIELDS) s[id] = +$(id).value;
+  return s;
+}
+function applySettings(s) {
+  if (s.voice && voices.some(v => v.id === s.voice)) voiceSel.value = s.voice;
+  for (const id of PRESET_FIELDS) if (s[id] != null) { $(id).value = s[id]; $(id + "Out").textContent = fmt(id, s[id]); }
+  // presets saved before per-engine settings kept Chatterbox's sliders and Zonos's emotion at the top level
+  const opts = s.options ? JSON.parse(JSON.stringify(s.options)) : {};
+  if (!s.options) {
+    const cb = {};
+    if (s.exaggeration != null && s.exaggeration !== 0.5) cb.exaggeration = s.exaggeration;
+    if (s.cfg != null && s.cfg !== 0.5) cb.cfg_weight = s.cfg;
+    if (s.temperature != null && s.temperature !== 0.4) cb.temperature = s.temperature;
+    if (Object.keys(cb).length) opts.chatterbox = cb;
+    if (s.emotion && s.emotion !== "neutral") opts.zonos = { emotion: s.emotion };
+  }
+  engineOpts = opts;
+  saveEngineOpts();
+  if (s.format) $("format").value = s.format;
+  if (s.normalize != null) $("normalize").checked = s.normalize;
+  onVoiceChange();
+}
+let presets = {};
+function renderPresets(data, select = "") {
+  presets = data;
+  $("preset").innerHTML = "";
+  $("preset").append(new Option(t("presetNone"), ""));
+  for (const name of Object.keys(presets)) $("preset").append(new Option(name, name));
+  $("preset").value = select in presets ? select : "";
+  $("deletePreset").hidden = !$("preset").value;
+}
+api("/presets").then(r => r.json()).then(d => renderPresets(d)).catch(() => {});
+$("preset").addEventListener("change", () => {
+  const name = $("preset").value;
+  $("deletePreset").hidden = !name;
+  if (name) { applySettings(presets[name]); setStatus(t("presetLoaded", { name })); }
+});
+$("savePreset").addEventListener("click", async () => {
+  const name = prompt(t("presetPrompt"), $("preset").value || "");
+  if (!name || !name.trim()) return;
+  const r = await postJSON("/presets", { name: name.trim(), settings: currentSettings() }, "PUT");
+  if (r.ok) { renderPresets(await r.json(), name.trim()); setStatus(t("presetSaved", { name: name.trim() })); }
+});
+$("deletePreset").addEventListener("click", async () => {
+  const name = $("preset").value;
+  if (!name || !confirm(t("presetDeleteConfirm", { name }))) return;
+  const r = await api(`/presets/${encodeURIComponent(name)}`, { method: "DELETE" });
+  if (r.ok) renderPresets(await r.json());
+});
+
+// ---------- Dialogue: one voice per speaker found in "שם: טקסט" lines ----------
+const speakerVoices = {};  // remembered per name while the page is open
+let speakerTimer = null;
+async function refreshSpeakers() {
+  const box = $("speakers");
+  box.hidden = !$("dialogue").checked;
+  if (box.hidden) return;
+  let speakers = [];
+  try { ({ speakers } = await (await postJSON("/speakers", { text: textEl.value || " " })).json()); } catch { return; }
+  box.innerHTML = speakers.length ? "" : `<span class="hint">${t("noSpeakers")}</span>`;
+  for (const name of speakers) {
+    const label = document.createElement("label"), span = document.createElement("span");
+    span.textContent = name;
+    const sel = voiceSel.cloneNode(true);
+    sel.removeAttribute("id");
+    sel.value = speakerVoices[name] || voiceSel.value;
+    sel.addEventListener("change", () => speakerVoices[name] = sel.value);
+    speakerVoices[name] = sel.value;
+    label.append(span, sel);
+    box.append(label);
+  }
+}
+$("dialogue").addEventListener("change", refreshSpeakers);
+textEl.addEventListener("input", () => {
+  if (!$("dialogue").checked) return;
+  clearTimeout(speakerTimer);
+  speakerTimer = setTimeout(refreshSpeakers, 500);
+});
+
+// ---------- Text / niqqud view ----------
+async function showNiqqud(on) {
+  $("viewText").setAttribute("aria-pressed", !on);
+  $("viewNiqqud").setAttribute("aria-pressed", on);
+  textEl.hidden = on;
+  niqqudEl.hidden = !on;
+  if (!on) { textEl.focus(); return; }
+  const text = textEl.value.trim();
+  if (!text) { niqqudEl.textContent = t("noText"); return; }
+  const engine = selectedVoice().engine, normalize = $("normalize").checked;
+  const key = `${lang}:${engine}:${normalize}:${dictionaryVersion}:${text}`;
+  if (niqqudFor === key) return;
+  niqqudEl.textContent = t("addingNiqqud");
+  try {
+    const r = await postJSON("/diacritize", { text, engine, normalize });
+    if (!r.ok) throw new Error();
+    const data = await r.json(), name = selectedVoice().engine_label || engine;
+    niqqudEl.textContent = data.text;
+    if (!data.uses_niqqud) {
+      const note = document.createElement("span");
+      note.className = "note";
+      note.dir = lang === "he" ? "rtl" : "ltr";
+      note.textContent = t(data.strips_niqqud ? "stripsNiqqud" : "plainNiqqud", { name });
+      niqqudEl.prepend(note);
+    }
+    niqqudFor = key;
+  } catch { niqqudEl.textContent = t("niqqudFailed"); }
+}
+$("normalize").addEventListener("change", () => { if (!niqqudEl.hidden) showNiqqud(true); });
+$("viewText").addEventListener("click", () => showNiqqud(false));
+$("viewNiqqud").addEventListener("click", () => showNiqqud(true));
+
+// ---------- Pronunciation dictionary ----------
+let dictionaryVersion = 0, lexicon = {};  // version bumps on change so the niqqud preview refreshes
+function renderLexicon(entries) {
+  lexicon = entries;
+  dictionaryVersion++;
+  const list = $("lexList");
+  list.innerHTML = "";
+  const words = Object.keys(entries);
+  if (!words.length) { list.innerHTML = `<li class="empty">${t("dictEmpty")}</li>`; return; }
+  for (const word of words) {
+    const li = document.createElement("li");
+    li.className = "dict-row";
+    li.innerHTML = `<span class="word" dir="auto"></span><span class="arrow">${lang === "he" ? "←" : "→"}</span><span class="reading" dir="auto"></span>
+      <button type="button" class="btn icon-btn danger"><svg><use href="#i-trash"/></svg></button>`;
+    li.querySelector(".word").textContent = word;
+    li.querySelector(".reading").textContent = entries[word];
+    li.querySelector("button").setAttribute("aria-label", word);
+    li.querySelector("button").addEventListener("click", async () => {
+      const r = await api(`/pronunciations/${encodeURIComponent(word)}`, { method: "DELETE" });
+      if (r.ok) renderLexicon(await r.json());
+    });
+    list.append(li);
+  }
+}
+api("/pronunciations").then(r => r.json()).then(renderLexicon).catch(() => {});
+$("lexAdd").addEventListener("click", async () => {
+  const word = $("lexWord").value.trim(), reading = $("lexReading").value.trim();
+  if (!word || !reading) { setStatus(t("needBoth"), true); return; }
+  const r = await postJSON("/pronunciations", { word, reading }, "PUT");
+  if (!r.ok) { setStatus(t("cantSave"), true); return; }
+  renderLexicon(await r.json());
+  $("lexWord").value = ""; $("lexReading").value = "";
+  setStatus(t("wordSaved", { w: word, r: reading }));
+  niqqudFor = null;
+});
+$("lexReading").addEventListener("keydown", e => { if (e.key === "Enter") $("lexAdd").click(); });
+
+// ---------- Generate ----------
+// /tts/stream sends frames: 1-byte type, 4-byte big-endian length, payload.
+// "a" = one sentence of WAV (played live), "m" = JSON summary, "f" = whole file, "e" = error.
+let liveCtx = null;  // Web Audio context playing the sentences of the current request
+function stopLive() {
+  if (liveCtx) { liveCtx.close().catch(() => {}); liveCtx = null; }
+}
+async function readFrames(response, onFrame) {
+  const reader = response.body.getReader();
+  let buf = new Uint8Array(0);
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    const merged = new Uint8Array(buf.length + value.length);
+    merged.set(buf); merged.set(value, buf.length); buf = merged;
+    while (buf.length >= 5) {
+      const len = new DataView(buf.buffer, buf.byteOffset + 1, 4).getUint32(0);
+      if (buf.length < 5 + len) break;
+      await onFrame(String.fromCharCode(buf[0]), buf.slice(5, 5 + len));
+      buf = buf.slice(5 + len);
+    }
+  }
+}
+
+// Synthesizes text (with one voice, or per speaker in dialogue mode) into a library item.
+// With live=true each sentence plays as soon as it arrives. -> {meta, blob}
+async function generate(text, voice, { live, onProgress, dialogue = false }) {
+  const fmtNow = format();
+  const r = await postJSON("/tts/stream", {
+    text, format: fmtNow, voice: voice.id, speed: +$("speed").value, normalize: $("normalize").checked,
+    options: engineOpts, sentence_pause: +$("sentencePause").value, use_cache: $("useCache").checked,
+    dialogue, speakers: dialogue ? { ...speakerVoices } : {},
+  });
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({}));
+    throw new Error(typeof detail.detail === "string" ? detail.detail : t("serverError", { code: r.status }));
+  }
+  let ctx = null, playAt = 0, sentences = 0, meta = null, blob = null;
+  if (live) { stopLive(); ctx = liveCtx = new AudioContext(); }
+  await readFrames(r, async (kind, payload) => {
+    if (kind === "a") {
+      sentences++;
+      onProgress?.(sentences);
+      if (ctx && ctx === liveCtx) {
+        const buffer = await ctx.decodeAudioData(payload.buffer);
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+        const start = Math.max(ctx.currentTime + 0.05, playAt);
+        src.start(start);
+        playAt = start + buffer.duration + +$("sentencePause").value;
+      }
+    } else if (kind === "m") meta = JSON.parse(new TextDecoder().decode(payload));
+    else if (kind === "f") blob = new Blob([payload], { type: MIME[fmtNow] || "audio/wav" });
+    else if (kind === "e") throw new Error(JSON.parse(new TextDecoder().decode(payload)).detail);
+  });
+  if (!blob || !meta) throw new Error(t("cutOff"));
+  return { meta, blob };
+}
+
+function setBusy(busy) {
+  $("speak").disabled = busy;
+  $("compare").disabled = busy;
+}
+
+async function speak() {
+  const text = textEl.value.trim();
+  if (!text) { setStatus(t("needText"), true); go("read"); textEl.focus(); return; }
+  if ($("speak").disabled) return;
+  setBusy(true);
+  const started = performance.now();
+  let done = 0;
+  const cold = await unloadedEngine(selectedVoice());
+  const tick = setInterval(() => {
+    const s = ((performance.now() - started) / 1000).toFixed(1);
+    setStatus(done ? t("liveProgress", { n: done, s }) : cold ? t("loadingEngine", { name: cold, s }) : t("generating", { s }), false, true);
+  }, 100);
+  try {
+    const { meta, blob } = await generate(text, selectedVoice(), { live: true, onProgress: n => done = n, dialogue: $("dialogue").checked });
+    await refreshLibrary();
+    await openItem(meta.id, { blob });  // already heard live; the player is for replay and download
+    clearInterval(tick);
+    setStatus(meta.cached ? t("cachedPlayed") : "");
+  } catch (e) {
+    stopLive();
+    clearInterval(tick);
+    setStatus(errorText(e), true);
+  } finally {
+    clearInterval(tick);
+    setBusy(false);
+  }
+}
+$("speak").addEventListener("click", speak);
+document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") speak(); });
+
+// One voice per engine: the selected voice's name if that engine has it (e.g. a custom
+// voice), otherwise the engine's first voice.
+async function compareEngines() {
+  const text = textEl.value.trim();
+  if (!text) { setStatus(t("needTextCompare"), true); textEl.focus(); return; }
+  const name = selectedVoice().name;
+  const picks = engines().map(engine =>
+    voices.find(v => v.engine === engine && v.name === name) || voices.find(v => v.engine === engine));
+  setBusy(true);
+  stopLive();
+  const results = [];
+  try {
+    for (const [i, voice] of picks.entries()) {
+      setStatus(t("comparing", { i: i + 1, n: picks.length, engine: voice.engine_label }), false, true);
+      try { results.push(await generate(text, voice, { live: false })); } catch (e) { console.warn(voice.id, e); }
+    }
+    await refreshLibrary();
+    if (results.length) await openItem(results[0].meta.id, { blob: results[0].blob });
+    const failed = picks.length - results.length;
+    setStatus(t("compareDone", { n: results.length, failed: failed ? t("compareFailed", { f: failed }) : "" }));
+    go("library");
+  } finally {
+    setBusy(false);
+  }
+}
+$("compare").addEventListener("click", compareEngines);
+
+// ---------- Player ----------
+// Opens a library item. `blob` skips refetching audio the stream just delivered.
+async function openItem(id, { blob = null, autoplay = false } = {}) {
+  const meta = await (await api(`/library/${id}`)).json();
+  if (!blob) blob = await (await api(`/library/${id}/audio?format=wav`)).blob();
+  if (current?.url) URL.revokeObjectURL(current.url);
+  current = { meta, url: URL.createObjectURL(blob), peaks: await computePeaks(blob), bounds: [] };
+  audio.src = current.url;
+  $("play").disabled = false;
+  $("sentencesBtn").disabled = false;
+  $("download").href = withKey(`/library/${id}/audio?format=${format()}`);
+  $("download").removeAttribute("aria-disabled");
+  renderSentences(meta);
+  renderHistory();
+  updateNow();
+  draw();
+  if (autoplay) audio.play().catch(() => {});
+}
+
+// Where each sentence starts and ends in the full file. The server puts the reading's sentence
+// pause between items; the result is scaled to the real duration so small rounding never drifts.
+function itemBounds() {
+  if (!current) return [];
+  const items = current.meta.items, raw = [], gap = current.meta.settings?.sentence_pause ?? 0.25;
+  let at = 0;
+  items.forEach((it, i) => { const len = it.seconds || 0; raw.push([at, at + len]); at += len + (i < items.length - 1 ? gap : 0); });
+  const scale = audio.duration && at ? audio.duration / at : 1;
+  return raw.map(([a, b]) => [a * scale, b * scale]);
+}
+function currentIndex() {
+  if (!current || !audio.duration) return -1;
+  const bounds = itemBounds(), now = audio.currentTime;
+  const i = bounds.findIndex(([, end]) => now < end + 0.125);
+  return i < 0 ? bounds.length - 1 : i;
+}
+let lastIndex = -2;
+function updateNow() {
+  if (!current) {
+    $("nowTitle").textContent = t("nothingYet"); $("nowSub").textContent = t("nothingSub");
+    $("time").textContent = "0:00 / 0:00";
+    return;
+  }
+  const meta = current.meta, speech = meta.items.filter(i => i.kind === "speech");
+  const idx = currentIndex(), item = meta.items[idx];
+  if (item && audio.currentTime > 0) {
+    const n = meta.items.slice(0, idx + 1).filter(i => i.kind === "speech").length;
+    $("nowTitle").textContent = item.kind === "pause" ? t("pauseNow") : t("sentenceOf", { i: n, n: speech.length });
+  } else {
+    $("nowTitle").textContent = (meta.kind === "chapter" ? meta.title : meta.text || "").slice(0, 60);
+  }
+  $("nowTitle").dir = "auto";
+  const gen = meta.generation_seconds ? t("madeIn", { a: meta.audio_seconds.toFixed(1), g: meta.generation_seconds.toFixed(1) })
+                                      : t("audioLen", { a: meta.audio_seconds.toFixed(1) });
+  $("nowSub").textContent = `${voiceText(meta.voice)} · ${gen}`;
+  $("time").textContent = `${clock(audio.currentTime)} / ${clock(audio.duration || meta.audio_seconds)}`;
+  if (idx !== lastIndex) {
+    lastIndex = idx;
+    document.querySelectorAll("#sentences li").forEach((li, i) => li.classList.toggle("current", i === idx && audio.currentTime > 0));
+  }
+}
+
+$("play").addEventListener("click", () => audio.paused ? audio.play() : audio.pause());
+audio.addEventListener("play", () => { stopLive(); setPlayIcon(true); loop(); });
+audio.addEventListener("pause", () => setPlayIcon(false));
+audio.addEventListener("ended", () => { draw(); updateNow(); });
+audio.addEventListener("loadedmetadata", () => { updateNow(); draw(); });
+function setPlayIcon(playing) {
+  $("playIcon").innerHTML = `<use href="#i-${playing ? "pause" : "play"}"/>`;
+  $("play").setAttribute("aria-label", t(playing ? "pause" : "play"));
+}
+function loop() { draw(); updateNow(); if (!audio.paused) requestAnimationFrame(loop); }
+
+$("sentencesBtn").addEventListener("click", () => {
+  const open = $("drawer").hidden;
+  $("drawer").hidden = !open;
+  $("sentencesBtn").setAttribute("aria-expanded", open);
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("drawer").hidden && !e.target.closest("#drawer input")) $("sentencesBtn").click(); });
+$("download").addEventListener("click", e => { if ($("download").hasAttribute("aria-disabled")) e.preventDefault(); });
+
+async function computePeaks(blob, bars = 200) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    ctx.close();
+    const data = buf.getChannelData(0), step = Math.floor(data.length / bars), peaks = [];
+    for (let i = 0; i < bars; i++) {
+      let max = 0;
+      for (let j = i * step; j < (i + 1) * step; j++) max = Math.max(max, Math.abs(data[j]));
+      peaks.push(max);
+    }
+    const top = Math.max(...peaks) || 1;
+    return peaks.map(p => p / top);
+  } catch { return []; }
+}
+
+// The waveform follows the reading direction of the interface.
+function draw() {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w) return;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const g = canvas.getContext("2d");
+  g.scale(dpr, dpr);
+  const css = getComputedStyle(document.documentElement);
+  const rtl = document.documentElement.dir === "rtl";
+  const peaks = current?.peaks?.length ? current.peaks : Array.from({ length: 120 }, () => 0.06);
+  const progress = audio.duration ? audio.currentTime / audio.duration : 0;
+  const bw = w / peaks.length;
+  peaks.forEach((p, i) => {
+    const barH = Math.max(2, p * (h - 4));
+    const x = rtl ? w - (i + 1) * bw : i * bw;
+    g.fillStyle = (i / peaks.length) < progress ? css.getPropertyValue("--accent") : css.getPropertyValue("--wave");
+    g.fillRect(x + bw * 0.2, (h - barH) / 2, Math.max(1, bw * 0.6), barH);
+  });
+}
+canvas.addEventListener("click", e => {
+  if (!audio.duration) return;
+  const rect = canvas.getBoundingClientRect();
+  const rtl = document.documentElement.dir === "rtl";
+  const frac = rtl ? (rect.right - e.clientX) / rect.width : (e.clientX - rect.left) / rect.width;
+  audio.currentTime = frac * audio.duration;
+  draw(); updateNow();
+});
+window.addEventListener("resize", draw);
+
+// ---------- Sentence editor: replay, regenerate or edit one sentence of the open reading ----------
+let sentenceAudio = null;
+function renderSentences(meta) {
+  const list = $("sentences");
+  list.innerHTML = "";
+  lastIndex = -2;
+  let n = 0;
+  meta.items.forEach((item, index) => {
+    const li = document.createElement("li"), num = document.createElement("span");
+    num.className = "n";
+    if (item.kind === "pause") {
+      li.innerHTML = `<span class="n"></span><span class="pause">${t("pauseItem", { s: item.seconds })}</span><span></span>`;
+      list.append(li);
+      return;
+    }
+    num.textContent = ++n;
+    const text = document.createElement("span");
+    text.className = "text"; text.dir = "auto";
+    text.textContent = item.text;
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const button = (label, fn) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "btn ghost"; b.textContent = label;
+      b.addEventListener("click", fn);
+      actions.append(b);
+      return b;
+    };
+    button(t("playSentence"), async () => {
+      sentenceAudio?.pause();
+      audio.pause();
+      const wav = await (await api(`/library/${meta.id}/sentences/${index}`)).blob();
+      sentenceAudio = new Audio(URL.createObjectURL(wav));
+      sentenceAudio.play();
+    });
+    const sentenceNo = n;
+    const redo = async (newText) => {
+      actions.querySelectorAll("button").forEach(b => b.disabled = true);
+      setStatus(t("redoing", { i: sentenceNo }), false, true);
+      try {
+        const r = await postJSON(`/library/${meta.id}/sentences/${index}`, { text: newText });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || t("serverError", { code: r.status }));
+        await openItem(meta.id);
+        await refreshLibrary();
+        setStatus(t("redone", { i: sentenceNo }));
+      } catch (e) {
+        setStatus(errorText(e), true);
+        actions.querySelectorAll("button").forEach(b => b.disabled = false);
+      }
+    };
+    button(t("redo"), () => redo(null));
+    button(t("edit"), () => {
+      const input = document.createElement("input");
+      input.type = "text"; input.dir = "auto";
+      input.value = item.text;
+      text.replaceWith(input);
+      input.focus();
+      input.addEventListener("keydown", e => {
+        if (e.key === "Enter" && input.value.trim()) redo(input.value.trim());
+        if (e.key === "Escape") { e.stopPropagation(); input.replaceWith(text); }
+      });
+    });
+    li.append(num, text, actions);
+    list.append(li);
+  });
+}
+
+// ---------- Library (saved on the server, survives refreshes) ----------
+function voiceText(id) {
+  const v = voices.find(v => v.id === id);
+  return v ? `${voiceLabel(v)} · ${v.engine_label}` : (id || "");
+}
+async function refreshLibrary() {
+  try { libraryItems = await (await api("/library")).json(); } catch { return; }
+  renderHistory();
+}
+function renderHistory() {
+  const list = $("history"), q = $("libSearch").value.trim();
+  $("libCount").textContent = libraryItems.length || "";
+  const items = q ? libraryItems.filter(i => `${i.title || ""} ${i.text || ""}`.includes(q)) : libraryItems;
+  if (!items.length) {
+    list.innerHTML = `<li class="empty"></li>`;
+    list.firstChild.textContent = q ? t("noMatch", { q }) : t("libEmpty");
+    return;
+  }
+  list.innerHTML = "";
+  const dateFmt = new Intl.DateTimeFormat(lang === "he" ? "he-IL" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.className = "lib-row";
+    li.setAttribute("aria-current", item.id === current?.meta.id);
+    const kind = { dialogue: "kind.dialogue", chapter: "kind.chapter" }[item.kind];
+    li.innerHTML = `<button type="button" class="btn icon-btn play-sm"><svg><use href="#i-play"/></svg></button>
+      <div class="grow"><div class="snippet" dir="auto"></div>
+        <div class="sub">${kind ? `<span class="tag accent">${t(kind)}</span>` : ""}${escapeHtml(voiceText(item.voice))} · ${secs(item.audio_seconds || 0)} · ${t("sentenceCount", { n: item.sentences ?? 0 })} · ${item.created ? dateFmt.format(item.created * 1000) : ""}</div></div>
+      <a class="btn icon-btn actions-wide"><svg><use href="#i-download"/></svg></a>
+      <button type="button" class="btn icon-btn danger"><svg><use href="#i-trash"/></svg></button>`;
+    li.querySelector(".snippet").textContent = item.kind === "chapter" ? item.title : item.text;
+    const [play, del] = li.querySelectorAll("button");
+    play.setAttribute("aria-label", t("play"));
+    play.addEventListener("click", () => openItem(item.id, { autoplay: true }).catch(e => setStatus(errorText(e), true)));
+    li.querySelector(".snippet").addEventListener("click", () => play.click());
+    li.querySelector(".snippet").style.cursor = "pointer";
+    const dl = li.querySelector("a");
+    dl.href = withKey(`/library/${item.id}/audio?format=${format()}`);
+    dl.setAttribute("aria-label", t("download"));
+    del.setAttribute("aria-label", t("deleteItem"));
+    del.addEventListener("click", async () => {
+      if (!confirm(t("deleteItemConfirm"))) return;
+      await api(`/library/${item.id}`, { method: "DELETE" });
+      if (current?.meta.id === item.id) clearPlayer();
+      refreshLibrary();
+    });
+    list.append(li);
+  }
+}
+function clearPlayer() {
+  audio.pause(); audio.removeAttribute("src");
+  current = null;
+  $("play").disabled = true; $("sentencesBtn").disabled = true;
+  $("download").setAttribute("aria-disabled", "true"); $("download").removeAttribute("href");
+  $("drawer").hidden = true; $("sentencesBtn").setAttribute("aria-expanded", false);
+  $("sentences").innerHTML = "";
+  updateNow(); draw();
+}
+$("libSearch").addEventListener("input", renderHistory);
+$("format").addEventListener("change", () => {
+  if (current) $("download").href = withKey(`/library/${current.meta.id}/audio?format=${format()}`);
+  renderHistory();
+});
+
+// ---------- Long documents: a background job; progress is polled ----------
+let jobTimer = null;
+function updateDocUses() {
+  if (!voices.length) { $("docUses").textContent = ""; return; }
+  $("docUses").textContent = t("docUses", { voice: voiceText(voiceSel.value), speed: Number($("speed").value).toFixed(2) });
+}
+$("docFile").addEventListener("change", () => {
+  const f = $("docFile").files[0];
+  $("docName").textContent = f ? f.name : t("docPick");
+  $("docName").dir = "auto";
+});
+$("docStart").addEventListener("click", async () => {
+  const file = $("docFile").files[0];
+  if (!file) { setStatus(t("docNeedFile"), true); return; }
+  const body = new FormData();
+  body.append("file", file);
+  const s = currentSettings();
+  body.append("settings", JSON.stringify({
+    voice: s.voice, speed: s.speed, normalize: s.normalize, options: s.options, sentence_pause: s.sentencePause,
+  }));
+  const r = await api("/documents", { method: "POST", body });
+  const data = await r.json();
+  if (!r.ok) { setStatus(data.detail || t("docStartFailed"), true); return; }
+  watchJob(data.id);
+});
+function renderJob() {
+  if (!job) return;
+  $("job").hidden = false;
+  $("jobBar").style.width = `${Math.round(100 * job.done / Math.max(job.total, 1))}%`;
+  const where = job.status === "running" && job.chapters[job.done] ? t("jobNow", { ch: job.chapters[job.done] }) : "";
+  const state = t("state." + job.status, { err: job.error || "" });
+  $("jobText").textContent = t("jobLine", { title: job.title, done: job.done, total: job.total, state, where });
+  $("jobCancel").hidden = job.status !== "running";
+  $("jobZip").hidden = !job.done;
+  if (job.done) $("jobZip").href = withKey(`/documents/${job.id}/zip?format=mp3`);
+}
+function watchJob(id) {
+  clearInterval(jobTimer);
+  let lastDone = -1;
+  const poll = async () => {
+    job = await (await api(`/jobs/${id}`)).json();
+    job.id = id;
+    renderJob();
+    if (job.done !== lastDone) { lastDone = job.done; refreshLibrary(); }
+    if (job.status !== "running") clearInterval(jobTimer);
+  };
+  $("jobCancel").onclick = () => api(`/jobs/${id}/cancel`, { method: "POST" }).then(poll);
+  poll();
+  jobTimer = setInterval(poll, 2000);
+}
+
+// ---------- Voice clips: uploaded or recorded, each one can be played, trimmed and leveled ----------
+// Edits happen in the browser; what gets checked and saved is the trimmed selection as WAV.
+const MAX_CLIPS = 5, MIN_SELECTION = 0.5;
+const clips = [];  // {name, data (mono Float32Array), rate, duration, peaks, start, end, gain, check, view}
+let clipCtx = null, clipPlaying = null;  // {clip, source, startedAt}
+const audioCtx = () => clipCtx ||= new AudioContext();
+function encodeWav(samples, rate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); str(8, "WAVEfmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, "data"); v.setUint32(40, samples.length * 2, true);
+  samples.forEach((s, i) => v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 0x7fff, true));
+  return new Blob([buf], { type: "audio/wav" });
+}
+function addClip(name, buffer) {
+  if (clips.length >= MAX_CLIPS) { setStatus(t("max5"), true); return; }
+  const data = new Float32Array(buffer.length);
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const d = buffer.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) data[i] += d[i] / buffer.numberOfChannels;
+  }
+  const bars = 240, step = Math.max(1, Math.floor(data.length / bars)), peaks = [];
+  for (let i = 0; i < bars; i++) {
+    let max = 0;
+    for (let j = i * step; j < Math.min(data.length, (i + 1) * step); j++) max = Math.max(max, Math.abs(data[j]));
+    peaks.push(max);
+  }
+  const top = Math.max(...peaks) || 1;
+  clips.push({ name, data, rate: buffer.sampleRate, duration: buffer.duration, peaks: peaks.map(p => p / top),
+               start: 0, end: buffer.duration, gain: 1, check: null });
+  renderClips();
+}
+// The selection with the volume change and 10 ms fades, so trimmed edges don't click.
+function clipSamples(c) {
+  const a = Math.floor(c.start * c.rate), b = Math.floor(c.end * c.rate), out = c.data.slice(a, b);
+  const fade = Math.min(Math.floor(c.rate * 0.01), out.length >> 1);
+  for (let i = 0; i < out.length; i++) {
+    const edge = fade ? Math.min(1, i / fade, (out.length - 1 - i) / fade) : 1;
+    out[i] *= c.gain * edge;
+  }
+  return out;
+}
+const clipWav = (c) => encodeWav(clipSamples(c), c.rate);
+
+function stopClip() {
+  if (!clipPlaying) return;
+  const { clip, source } = clipPlaying;
+  clipPlaying = null;
+  try { source.stop(); } catch {}
+  updateClip(clip);
+}
+function playClip(c) {
+  const wasThis = clipPlaying?.clip === c;
+  stopClip();
+  if (wasThis) return;
+  audio.pause(); sentenceAudio?.pause();
+  const ctx = audioCtx(), samples = clipSamples(c), buf = ctx.createBuffer(1, samples.length, c.rate);
+  buf.copyToChannel(samples, 0);
+  const source = ctx.createBufferSource();
+  source.buffer = buf; source.connect(ctx.destination);
+  source.onended = () => { if (clipPlaying?.source === source) stopClip(); };
+  ctx.resume();
+  source.start();
+  clipPlaying = { clip: c, source, startedAt: ctx.currentTime };
+  const tick = () => { if (clipPlaying?.source === source) { drawClip(c); requestAnimationFrame(tick); } };
+  tick();
+  updateClip(c);
+}
+
+// Finds where speech starts and ends: 20 ms frames louder than 6% of the loudest frame,
+// keeping a little air (0.15 s before, 0.25 s after).
+function trimSilence(c) {
+  const frame = Math.floor(c.rate * 0.02), rms = [];
+  for (let i = 0; i + frame <= c.data.length; i += frame) {
+    let sum = 0;
+    for (let j = i; j < i + frame; j++) sum += c.data[j] * c.data[j];
+    rms.push(Math.sqrt(sum / frame));
+  }
+  const threshold = Math.max(Math.max(...rms) * 0.06, 0.002);
+  const first = rms.findIndex(r => r > threshold);
+  if (first < 0) return;
+  const last = rms.length - 1 - [...rms].reverse().findIndex(r => r > threshold);
+  c.start = Math.max(0, first * 0.02 - 0.15);
+  c.end = Math.min(c.duration, (last + 1) * 0.02 + 0.25);
+}
+// Brings the loudest point of the selection to about -1 dB (at most 8x louder).
+function evenVolume(c) {
+  const a = Math.floor(c.start * c.rate), b = Math.floor(c.end * c.rate);
+  let peak = 0;
+  for (let i = a; i < b; i++) peak = Math.max(peak, Math.abs(c.data[i]));
+  c.gain = peak ? Math.min(8, 0.89 / peak) : 1;
+}
+
+function renderClips() {
+  const box = $("clips");
+  box.innerHTML = "";
+  clips.forEach(c => {
+    const card = document.createElement("div");
+    card.className = "clip";
+    card.innerHTML = `<div class="clip-head"><span class="clip-name" dir="auto"></span><span class="clip-len"></span>
+        <button type="button" class="btn icon-btn danger" data-act="remove"><svg><use href="#i-trash"/></svg></button></div>
+      <canvas class="clip-wave"></canvas>
+      <div class="clip-tools">
+        <button type="button" class="btn" data-act="play"><svg><use href="#i-play"/></svg><span></span></button>
+        <button type="button" class="btn ghost" data-act="trim">${t("trimSilence")}</button>
+        <button type="button" class="btn ghost" data-act="volume">${t("evenVolume")}</button>
+        <button type="button" class="btn ghost" data-act="reset">${t("undoClip")}</button>
+      </div>
+      <p class="clip-check"></p>`;
+    card.querySelector(".clip-name").textContent = c.name;
+    card.querySelector("[data-act=remove]").setAttribute("aria-label", t("deleteRecording"));
+    c.view = card;
+    card.addEventListener("click", e => {
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if (!act) return;
+      if (act === "remove") { if (clipPlaying?.clip === c) stopClip(); clips.splice(clips.indexOf(c), 1); renderClips(); return; }
+      if (act === "play") { playClip(c); return; }
+      stopClip();
+      if (act === "trim") trimSilence(c);
+      if (act === "volume") evenVolume(c);
+      if (act === "reset") { c.start = 0; c.end = c.duration; c.gain = 1; }
+      c.check = null;
+      updateClip(c);
+    });
+    attachClipDrag(c, card.querySelector("canvas"));
+    box.append(card);
+    updateClip(c);
+  });
+  $("clipsHint").hidden = !clips.length;
+}
+function updateClip(c) {
+  if (!c.view) return;
+  const sel = c.end - c.start;
+  const len = c.view.querySelector(".clip-len");
+  len.textContent = t("clipLen", { sel: sel.toFixed(1), total: c.duration.toFixed(1) })
+    + (c.gain !== 1 ? ` · ${t("volumeUp", { db: (20 * Math.log10(c.gain)).toFixed(0) })}` : "");
+  len.classList.toggle("good", sel >= 8 && sel <= 20);
+  const play = c.view.querySelector("[data-act=play]"), playing = clipPlaying?.clip === c;
+  play.querySelector("use").setAttribute("href", playing ? "#i-pause" : "#i-play");
+  play.querySelector("span").textContent = playing ? t("stopSel") : t("playSel");
+  const check = c.view.querySelector(".clip-check");
+  check.hidden = !c.check;
+  if (c.check) {
+    const issues = (c.check.codes || []).map(code => t("issue." + code, { s: Math.round(c.check.seconds || 0) })).join(" ");
+    check.textContent = c.check.ok ? t("checkGoodClip", { s: c.check.seconds }) : (issues || c.check.warnings.join(" "));
+    check.className = "clip-check " + (c.check.ok ? "ok" : "bad");
+  }
+  drawClip(c);
+}
+// Waveform with the kept part bright, the cut parts dim, two handles and a playhead.
+function drawClip(c) {
+  const canvas = c.view?.querySelector("canvas");
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w) return;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const g = canvas.getContext("2d");
+  g.scale(dpr, dpr);
+  const css = getComputedStyle(document.documentElement), color = n => css.getPropertyValue(n).trim();
+  const x = sec => (sec / c.duration) * w, bw = w / c.peaks.length;
+  g.fillStyle = color("--accent-soft");
+  g.fillRect(x(c.start), 0, x(c.end) - x(c.start), h);
+  c.peaks.forEach((p, i) => {
+    const at = (i + 0.5) / c.peaks.length * c.duration, inside = at >= c.start && at <= c.end;
+    const barH = Math.max(2, Math.min(1, p * (inside ? c.gain : 1)) * (h - 8));
+    g.fillStyle = inside ? color("--ink") : color("--wave");
+    g.globalAlpha = inside ? 0.85 : 0.6;
+    g.fillRect(i * bw + bw * 0.2, (h - barH) / 2, Math.max(1, bw * 0.6), barH);
+  });
+  g.globalAlpha = 1;
+  g.fillStyle = color("--accent");
+  for (const sec of [c.start, c.end]) {
+    const hx = Math.min(w - 2, Math.max(0, x(sec) - 1));
+    g.fillRect(hx, 0, 3, h);
+    g.beginPath(); g.roundRect(hx - 4, h / 2 - 10, 11, 20, 3); g.fill();
+  }
+  if (clipPlaying?.clip === c) {
+    const at = c.start + (audioCtx().currentTime - clipPlaying.startedAt);
+    g.fillStyle = "#fff";
+    g.fillRect(x(Math.min(at, c.end)), 0, 2, h);
+  }
+}
+// Drag either edge of the selection; the handle nearest the pointer moves.
+// Time always runs left to right here, like in audio editors, in both languages.
+function attachClipDrag(c, canvas) {
+  let handle = null;
+  const secAt = e => {
+    const r = canvas.getBoundingClientRect();
+    return Math.min(c.duration, Math.max(0, (e.clientX - r.left) / r.width * c.duration));
+  };
+  const move = e => {
+    if (!handle) return;
+    const at = secAt(e);
+    if (handle === "start") c.start = Math.max(0, Math.min(at, c.end - MIN_SELECTION));
+    else c.end = Math.min(c.duration, Math.max(at, c.start + MIN_SELECTION));
+    c.check = null;
+    updateClip(c);
+  };
+  canvas.addEventListener("pointerdown", e => {
+    const at = secAt(e);
+    handle = Math.abs(at - c.start) <= Math.abs(at - c.end) ? "start" : "end";
+    canvas.setPointerCapture(e.pointerId);
+    stopClip();
+    move(e);
+  });
+  canvas.addEventListener("pointermove", move);
+  canvas.addEventListener("pointerup", () => handle = null);
+  canvas.addEventListener("pointercancel", () => handle = null);
+}
+window.addEventListener("resize", () => clips.forEach(drawClip));
+
+$("voiceFile").addEventListener("change", async () => {
+  for (const f of [...$("voiceFile").files]) {
+    try { addClip(f.name, await audioCtx().decodeAudioData(await f.arrayBuffer())); }
+    catch { setStatus(`${f.name}: ${t("issue.unreadable")}`, true); }
+  }
+  $("voiceFile").value = "";
+});
+
+// Recording in the browser needs localhost or HTTPS: browsers block the microphone on plain-http network addresses.
+let recorder = null;
+$("recordBtn").addEventListener("click", async () => {
+  if (recorder) { recorder.stop(); return; }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    $("recordNote").hidden = false;
+    $("recordNote").textContent = t("micBlocked");
+    return;
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } });
+  const ctx = new AudioContext(), analyser = ctx.createAnalyser(), levels = new Float32Array(1024);
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  const chunks = [], started = performance.now();
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = e => chunks.push(e.data);
+  const meter = setInterval(() => {
+    analyser.getFloatTimeDomainData(levels);
+    const peak = Math.max(...levels.map(Math.abs));
+    $("meterFill").style.width = `${Math.min(100, peak * 100)}%`;
+    $("recordTime").textContent = secs((performance.now() - started) / 1000);
+    if (performance.now() - started > 30000) recorder.stop();  // longer isn't used by most engines
+  }, 100);
+  recorder.onstop = async () => {
+    clearInterval(meter);
+    stream.getTracks().forEach(tr => tr.stop());
+    $("meterFill").style.width = "0"; $("recordTime").textContent = "";
+    $("recordLabel").textContent = t("record");
+    recorder = null;
+    const decoded = await ctx.decodeAudioData(await new Blob(chunks).arrayBuffer());
+    ctx.close();
+    addClip(t("recordingN", { i: clips.length + 1 }), decoded);
+  };
+  recorder.start();
+  $("recordLabel").textContent = t("stopRecord");
+});
+const voiceFiles = () => clips.map((c, i) => [clipWav(c), `clip${i + 1}.wav`]);
+$("checkVoice").addEventListener("click", async () => {
+  const files = voiceFiles();
+  if (!files.length) { setStatus(t("needFileFirst"), true); return; }
+  const body = new FormData();
+  for (const [f, name] of files) body.append("files", f, name);
+  const results = await (await api("/voices/check", { method: "POST", body })).json();
+  results.forEach((res, i) => { if (clips[i]) { clips[i].check = res; updateClip(clips[i]); } });
+});
+
+// ---------- Fonts: chosen per browser, loaded from Google Fonts only when picked ----------
+const READ_FONTS = {
+  "Noto Serif Hebrew": ["400;500", "serif"], "Frank Ruhl Libre": ["400;500", "serif"], "David Libre": ["400;500", "serif"],
+  "Rubik": ["400;500", "sans-serif"], "Heebo": ["400;500", "sans-serif"], "Assistant": ["400;500", "sans-serif"],
+  "Noto Sans Hebrew": ["400;500", "sans-serif"],
+};
+const UI_FONTS = {
+  "Heebo": "400;500;600", "Rubik": "400;500;600", "IBM Plex Sans Hebrew": "400;500;600", "Assistant": "400;500;600",
+  "Noto Sans Hebrew": "400;500;600", "Open Sans": "400;500;600", "Varela Round": "400",
+};
+const FONT_DEFAULTS = { read: "Noto Serif Hebrew", ui: "Heebo", scale: 1 };
+const loadedFonts = new Set(["Noto Serif Hebrew", "Heebo"]);
+function loadFont(family, weights) {
+  if (loadedFonts.has(family)) return;
+  loadedFonts.add(family);
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = `https://fonts.googleapis.com/css2?family=${family.replaceAll(" ", "+")}:wght@${weights}&display=swap`;
+  document.head.append(link);
+}
+// Kept in memory too, so the menu works where the browser blocks storage.
+const fontChoice = { read: storage.get("kol-font-read"), ui: storage.get("kol-font-ui"), scale: storage.get("kol-font-scale") };
+function setFont(key, value) { fontChoice[key] = value; storage.set(`kol-font-${key}`, value ?? ""); applyFonts(); }
+function applyFonts() {
+  const read = READ_FONTS[fontChoice.read] ? fontChoice.read : FONT_DEFAULTS.read;
+  const ui = UI_FONTS[fontChoice.ui] ? fontChoice.ui : FONT_DEFAULTS.ui;
+  const scale = Math.min(1.5, Math.max(0.8, +fontChoice.scale || FONT_DEFAULTS.scale));
+  loadFont(read, READ_FONTS[read][0]);
+  loadFont(ui, UI_FONTS[ui]);
+  const root = document.documentElement.style;
+  root.setProperty("--read", `"${read}", "David", ${READ_FONTS[read][1]}`);
+  root.setProperty("--ui", `"${ui}", "Segoe UI", sans-serif`);
+  root.setProperty("--read-scale", scale);
+  $("readFont").value = read; $("uiFont").value = ui;
+  $("readSize").value = scale; $("readSizeOut").textContent = `${Math.round(scale * 100)}%`;
+}
+for (const f of Object.keys(READ_FONTS)) $("readFont").append(new Option(f, f));
+for (const f of Object.keys(UI_FONTS)) $("uiFont").append(new Option(f, f));
+$("readFont").addEventListener("change", () => setFont("read", $("readFont").value));
+$("uiFont").addEventListener("change", () => setFont("ui", $("uiFont").value));
+$("readSize").addEventListener("input", () => setFont("scale", $("readSize").value));
+$("fontsReset").addEventListener("click", () => { setFont("read", null); setFont("ui", null); setFont("scale", null); });
+$("fontsBtn").addEventListener("click", () => {
+  const open = $("fontsPop").hidden;
+  $("fontsPop").hidden = !open;
+  $("fontsBtn").setAttribute("aria-expanded", open);
+});
+document.addEventListener("click", e => {
+  if (!$("fontsPop").hidden && !e.target.closest(".fonts-menu")) { $("fontsPop").hidden = true; $("fontsBtn").setAttribute("aria-expanded", false); }
+});
+applyFonts();
+
+// ---------- Start ----------
+applyLanguage();
+go(storage.get("kol-view") || "read");
+</script>
+</body>
+</html>

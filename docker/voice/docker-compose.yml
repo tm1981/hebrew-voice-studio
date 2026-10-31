@@ -1,0 +1,54 @@
+# Hebrew Voice Studio for a Docker host with an NVIDIA GPU (e.g. RTX 3090).
+#
+# Build the image first (from the repo root):   docker build -t hebrew-voice:dev .
+# Portainer: Stacks -> Add stack -> Web editor -> paste this file -> Deploy.
+# Then open http://<docker-host-ip>:8010 for the web UI.
+#
+# Host prerequisites: NVIDIA driver + NVIDIA Container Toolkit, so `docker run --gpus all
+# nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi` works on that machine.
+#
+# The image holds the code and the Python envs only. On first use the app downloads the models
+# (about 50 GB with every engine) into the models volume, so the first start of each engine
+# takes a while; later starts are fast.
+
+services:
+  hebrew-voice:
+    image: hebrew-voice:dev
+    container_name: hebrew-voice
+    ports:
+      - "8010:8010"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all  # or the GPU index, e.g. 0, if the host has several
+      # - TZ=Asia/Jerusalem         # optional: local time for logs and library timestamps
+      # Which engines start (and so which models get downloaded); unset = all of them. With every
+      # GPU engine loaded the app needs about 20-23 GB of GPU memory, which is tight on a 24 GB
+      # card next to Zonos; unused GPU engines unload by themselves after 30 minutes (web UI:
+      # Server status). Names: lightblue, blue25, kokoro, chatterbox, omnivoice, higgs, qwen, magpie, f5
+      # - VOICE_ENGINES=lightblue,blue25,kokoro,chatterbox,qwen,magpie,f5
+      # Optional Zonos-Hebrew (it already runs on this host, port 7860). If both containers are on
+      # the same compose network (e.g. the zonos-hebrew service added to this file) use the service
+      # name as below; from a separate stack use the host's address, e.g. http://<docker-host>:7860/
+      # (it can also be set later in the web UI: Server status -> Zonos-Hebrew).
+      # - ZONOS_URL=http://zonos-hebrew:7860/
+    volumes:
+      # Models and the Hugging Face cache (models/hf). Named volume by default; to keep them in a
+      # host folder instead, replace the line with e.g.:
+      #   - /srv/voice/models:/app/models
+      - voice-models:/app/models
+      # Your data: cloned voices, the library of readings, presets, settings, pronunciations,
+      # api_key.txt. Named volume by default; for a host folder use e.g.:
+      #   - /srv/voice/data:/data
+      - voice-data:/data
+    shm_size: "2gb"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  voice-models:
+  voice-data:

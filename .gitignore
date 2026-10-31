@@ -1,0 +1,21 @@
+# Models: downloaded on first use (model_files.py, Hugging Face cache in models/hf)
+models/
+
+# User data (DATA_DIR): recorded voices, the library, settings, the API key, the dictionary
+voices/
+outputs/
+api_key.txt
+presets.json
+settings.json
+pronunciations.json
+
+# Third-party code, fetched by tools/fetch_vendor.py
+vendor/BlueTTS/
+vendor/phonikud-chatterbox/
+# no longer used (Higgs runs without it)
+vendor/higgs-studio/
+
+__pycache__/
+*.pyc
+*.log
+.superpowers/
