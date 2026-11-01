@@ -329,6 +329,12 @@ The OpenAI-compatible endpoint works too (e.g. the OpenAI TTS custom integration
 (saved to `api_key.txt` in the data folder, and used at once). A key passed with `--api-key` or
 `TTS_API_KEY` is shown but can only be changed there.
 
+The home network needs no key only when the server is opened by an IP address, `localhost`, a
+one-word machine name or a `.local`/`.lan`/`.home`/`.internal` name, and, for requests from a
+web page, only from the app's own page. This stops other websites you visit from using the
+server through your browser. To skip the key under another name, set
+`TTS_ALLOWED_HOSTS=voice.example.com` (comma-separated).
+
 ## Backup and restore
 
 **Server status → Backup** downloads one zip with your recorded voices, presets, settings,

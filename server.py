@@ -177,6 +177,34 @@ def trusted_client(host: str) -> bool:
         return False
     return ip.is_loopback or (not args.lan_needs_key and ip.is_private and not ip.is_link_local)
 
+
+# A home-network name for this server: an IP address, localhost, a one-word machine name, or
+# .local/.lan/.home/.internal/.home.arpa; more with TTS_ALLOWED_HOSTS="voice.example.com,...".
+LOCAL_NAME = re.compile(r"^(?:[a-z0-9-]+|[a-z0-9.-]+\.(?:local|lan|home|internal|home\.arpa))$", re.I)
+EXTRA_HOSTS = {h.strip().lower() for h in os.environ.get("TTS_ALLOWED_HOSTS", "").split(",") if h.strip()}
+
+
+def keyless_request(request: Request) -> bool:
+    """May this request skip the key? It must come from a trusted address (trusted_client) and,
+    since that address may be a browser on the home network visiting some other site:
+    - name the server by a home-network name (Host), not a public domain, which is how a
+      DNS-rebinding page would reach it;
+    - if it comes from a web page (Origin), from this server's own pages, not another site
+      posting a form to it.
+    Apps, scripts and Home Assistant send no Origin; requests with the key skip all this."""
+    if not request.client or not trusted_client(request.client.host):
+        return False
+    host = request.headers.get("host", "").lower()
+    name = host[1:].split("]")[0] if host.startswith("[") else host.rsplit(":", 1)[0]
+    try:
+        ipaddress.ip_address(name)
+    except ValueError:
+        if not (LOCAL_NAME.match(name) or name in EXTRA_HOSTS or host in EXTRA_HOSTS):
+            return False
+    origin = request.headers.get("origin")
+    return origin is None or origin.split("://", 1)[-1].lower() == host
+
+
 OPEN_PATHS = {"/", "/favicon.ico", "/docs", "/openapi.json", "/health"}  # the UI page asks for the key itself
 
 
@@ -245,10 +273,11 @@ def set_api_key(body: ApiKeySetting):
 
 @app.middleware("http")
 async def require_api_key(request: Request, call_next):
-    """Requests from this PC and the home network pass; others need the key. Compared in constant time."""
+    """Requests from this PC and the home network pass (see keyless_request); others need the
+    key. Compared in constant time."""
     path = request.url.path
     open_path = path in OPEN_PATHS or path.startswith("/fonts/")
-    if API_KEY and request.client and not trusted_client(request.client.host) and not open_path:
+    if API_KEY and not open_path and not keyless_request(request):
         auth = request.headers.get("authorization", "")
         given = (
             request.headers.get("x-api-key")
@@ -1016,10 +1045,14 @@ def restore_upload(file: UploadFile = File(...)):
             "api_key_changed": key_changed, "skipped": result["skipped"], "errors": errors}
 
 
+RESTORABLE_SETTINGS = {"zonos_url", "auto_unload_minutes", "keep_loaded", "openai_voices", "default_voice"}
+
+
 def apply_settings(values: dict) -> None:
     """Settings from a restored backup: saved (merged), and the ones held in memory updated."""
     from engines import OnDemand
 
+    values = {k: v for k, v in values.items() if k in RESTORABLE_SETTINGS}
     save_settings(**values)
     if isinstance(values.get("auto_unload_minutes"), int):
         auto_unload["minutes"] = values["auto_unload_minutes"]
