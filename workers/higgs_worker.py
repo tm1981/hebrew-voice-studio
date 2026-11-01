@@ -41,7 +41,8 @@ class HiggsBackend:
 
     def load(self):
         print("Loading Higgs Audio v3...", flush=True)
-        self.tok = AutoTokenizer.from_pretrained(REPO, revision=REVISION)
+        # trust_remote_code: otherwise it stops to ask on the console (a container has none to answer)
+        self.tok = AutoTokenizer.from_pretrained(REPO, revision=REVISION, trust_remote_code=True)
         self.model = AutoModelForCausalLM.from_pretrained(REPO, revision=REVISION, trust_remote_code=True,
                                                           dtype=torch.bfloat16).to("cuda").eval()
         self.model.get_audio_codec()

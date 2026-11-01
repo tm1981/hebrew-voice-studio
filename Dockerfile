@@ -78,6 +78,6 @@ ENV VOICE_ENVS=/opt/envs \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 VOLUME ["/app/models", "/data"]
-EXPOSE 8010
+EXPOSE 8010 10200
 
 ENTRYPOINT ["/opt/envs/voice/bin/python", "-X", "utf8", "server.py", "--host", "0.0.0.0"]

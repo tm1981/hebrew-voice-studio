@@ -44,10 +44,13 @@ class Library:
         self.folder = folder
         self.folder.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
-        self.by_key: dict[str, str] = {}
-        for meta in self._all_meta():
-            if meta.get("cache_key"):
-                self.by_key[meta["cache_key"]] = meta["id"]
+        self.reindex()
+
+    def reindex(self) -> None:
+        """Reads which readings are cached again, e.g. after a backup was restored into the folder."""
+        by_key = {meta["cache_key"]: meta["id"] for meta in self._all_meta() if meta.get("cache_key")}
+        with self.lock:
+            self.by_key = by_key
 
     def _all_meta(self) -> list[dict]:
         metas = []

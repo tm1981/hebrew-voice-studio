@@ -224,6 +224,7 @@
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: start; padding: 11px 16px; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+  table.compact td { padding: 4px 8px; }
   tr:last-child td { border-bottom: 0; }
   td.num { font-variant-numeric: tabular-nums; }
 
@@ -511,6 +512,44 @@
           </select>
         </div>
       </div>
+      <div class="panel form" id="haPanel" style="max-width:720px;margin-top:16px">
+        <h2 data-i18n="haTitle"></h2>
+        <p class="muted small" id="haHelp"></p>
+        <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <label for="defaultVoice" class="small" data-i18n="defaultVoice"></label>
+          <select id="defaultVoice" style="width:auto"></select>
+        </div>
+        <p class="muted small" data-i18n="openaiMapHelp" style="margin-top:14px"></p>
+        <table class="compact"><tbody id="openaiMap"></tbody></table>
+        <div class="row" style="margin-top:12px">
+          <button type="button" class="btn primary" id="voiceMapSave" data-i18n="saveVoices"></button>
+          <button type="button" class="btn" id="voiceMapReset" data-i18n="resetVoices"></button>
+        </div>
+      </div>
+      <div class="panel form" id="keyPanel" style="max-width:720px;margin-top:16px">
+        <h2 data-i18n="keyTitle"></h2>
+        <p class="muted small" id="keyHelp"></p>
+        <div class="row" id="keyRow">
+          <input type="text" id="apiKeyValue" dir="ltr" maxlength="128" spellcheck="false" autocomplete="off">
+          <button type="button" class="btn" id="keyCopy" data-i18n="keyCopy"></button>
+        </div>
+        <div class="row" id="keyActions" style="margin-top:8px">
+          <button type="button" class="btn primary" id="keySave" data-i18n="keySave"></button>
+          <button type="button" class="btn" id="keyNew" data-i18n="keyNew"></button>
+        </div>
+      </div>
+      <div class="panel form" id="backupPanel" style="max-width:720px;margin-top:16px">
+        <h2 data-i18n="backupTitle"></h2>
+        <p class="muted small" data-i18n="backupHelp"></p>
+        <label class="switch"><span id="backupLibraryLabel"></span><input type="checkbox" id="backupLibrary"></label>
+        <div class="row" style="margin-top:8px">
+          <a class="btn primary" id="backupDownload" download><svg><use href="#i-download"/></svg><span data-i18n="backupDownload"></span></a>
+        </div>
+        <p class="muted small" data-i18n="restoreHelp" style="margin-top:18px"></p>
+        <label class="file-pick"><svg><use href="#i-upload"/></svg><span class="names" id="restoreName" data-i18n="restorePick"></span>
+          <input type="file" id="restoreFile" accept=".zip,application/zip"></label>
+        <div class="row"><button type="button" class="btn" id="restoreStart" data-i18n="restoreStart"></button></div>
+      </div>
       <div class="panel form" id="zonosPanel" style="max-width:720px;margin-top:16px">
         <h2 data-i18n="zonosTitle"></h2>
         <p class="muted small" data-i18n="zonosHelp"></p>
@@ -652,6 +691,30 @@ const STR = {
     niqqudFailed: "Couldn't add niqqud. Make sure the server is running.",
     apiPrompt: "The server asks for an API key (shown in the server window and in api_key.txt):",
     close: "Close",
+    keepLoaded: "Keep loaded", keepLoadedHint: "Loads at startup and isn't unloaded for being unused",
+    keepOn: "{name} stays loaded, and loads at every start.", keepOff: "{name} unloads again when unused.",
+    haTitle: "Home Assistant and other apps",
+    haHelp: "In Home Assistant: Settings › Devices & services › Add integration › Wyoming Protocol. Host: this server's address, port {port}. Every voice is offered there; the default voice below is used when none is picked. The Wyoming port works from this computer and the home network only (WYOMING_ALLOW can limit it to Home Assistant's address).",
+    haOff: "The Wyoming port for Home Assistant is off (the server was started with --wyoming-port 0).",
+    defaultVoice: "Default voice",
+    openaiMapHelp: "Apps that use the OpenAI voice names (alloy, nova…) get these voices. A full voice name such as lightblue/noa always works too.",
+    saveVoices: "Save voices", resetVoices: "Back to defaults", voicesSaved: "Voices saved.",
+    keyTitle: "API key",
+    keyHelp: "Apps and devices outside the home network send this key. Changing it is immediate: apps with the old key stop working until you give them the new one.",
+    keyFixed: "This key is set when the server starts (--api-key or TTS_API_KEY), so change it there.",
+    keyOffHelp: "The server runs without a key (--no-auth): anyone who can reach it can use it.",
+    keyCopy: "Copy", keySave: "Use this key", keyNew: "Generate a new key", keyCopied: "Key copied.",
+    keySaved: "The new key is in use. Update it in your apps.", keyConfirm: "Apps using the current key will stop working until you give them the new one. Continue?",
+    keyInvalid: "A key is 16 to 128 letters, digits, - _ . or ~.",
+    backupTitle: "Backup",
+    backupHelp: "One zip file with your recorded voices, presets, settings, pronunciations and the API key. Keep it somewhere safe: it holds the key.",
+    backupLibrary: "Include the library ({n} readings; can be large)", backupDownload: "Download backup",
+    restoreHelp: "Restoring adds the backup to what's here. Voices and readings with the same name are replaced; presets, pronunciations and settings are merged.",
+    restorePick: "Choose a backup (.zip)", restoreStart: "Restore", restoreNeedFile: "Choose a backup file first.",
+    restoreConfirm: "Restore {name}? Voices and readings with the same name will be replaced.", restoring: "Restoring...",
+    restored: "Restored: {voices} voices, {library} readings, {words} pronunciations, {presets} presets{settings}.",
+    restoredSettings: ", settings", restoredKey: " The API key from the backup is now in use.",
+    restoredErrors: " Problems: {list}",
     zonosTitle: "Zonos-Hebrew (optional)",
     zonosHelp: "Zonos runs in Docker on another machine (see docker/zonos-hebrew). Enter its address to use it; it reads Hebrew only, and offers emotions. The address is saved for the next start.",
     zonosConnect: "Connect", zonosOff: "Turn off", zonosConnecting: "Connecting…",
@@ -773,6 +836,30 @@ const STR = {
     niqqudFailed: "לא ניתן להוסיף ניקוד. ודאו שהשרת רץ.",
     apiPrompt: "השרת מבקש מפתח API (מופיע בחלון של השרת ובקובץ api_key.txt):",
     close: "סגירה",
+    keepLoaded: "להשאיר טעון", keepLoadedHint: "נטען בהפעלה ולא נפרק כשאינו בשימוש",
+    keepOn: "{name} יישאר טעון, וייטען בכל הפעלה.", keepOff: "{name} ייפרק שוב כשאינו בשימוש.",
+    haTitle: "Home Assistant ואפליקציות אחרות",
+    haHelp: "ב-Home Assistant: Settings › Devices & services › Add integration › Wyoming Protocol. Host: הכתובת של השרת הזה, פורט {port}. כל הקולות מוצעים שם; קול ברירת המחדל שלמטה משמש כשלא נבחר קול. פורט Wyoming עובד רק מהמחשב הזה ומהרשת הביתית (WYOMING_ALLOW יכול להגביל אותו לכתובת של Home Assistant).",
+    haOff: "פורט Wyoming ל-Home Assistant כבוי (השרת הופעל עם ‎--wyoming-port 0).",
+    defaultVoice: "קול ברירת מחדל",
+    openaiMapHelp: "אפליקציות שמשתמשות בשמות הקולות של OpenAI (alloy, nova…) מקבלות את הקולות האלה. שם קול מלא כמו lightblue/noa תמיד עובד גם כן.",
+    saveVoices: "שמירת הקולות", resetVoices: "חזרה לברירת המחדל", voicesSaved: "הקולות נשמרו.",
+    keyTitle: "מפתח API",
+    keyHelp: "אפליקציות ומכשירים מחוץ לרשת הביתית שולחים את המפתח הזה. שינוי נכנס לתוקף מיד: אפליקציות עם המפתח הישן יפסיקו לעבוד עד שתזינו בהן את החדש.",
+    keyFixed: "המפתח נקבע בהפעלת השרת (‎--api-key או TTS_API_KEY), ולכן יש לשנות אותו שם.",
+    keyOffHelp: "השרת פועל בלי מפתח (‎--no-auth): כל מי שמגיע אליו יכול להשתמש בו.",
+    keyCopy: "העתקה", keySave: "שימוש במפתח הזה", keyNew: "יצירת מפתח חדש", keyCopied: "המפתח הועתק.",
+    keySaved: "המפתח החדש בשימוש. עדכנו אותו באפליקציות שלכם.", keyConfirm: "אפליקציות שמשתמשות במפתח הנוכחי יפסיקו לעבוד עד שתזינו בהן את החדש. להמשיך?",
+    keyInvalid: "מפתח הוא 16 עד 128 אותיות לטיניות, ספרות, - _ . או ~.",
+    backupTitle: "גיבוי",
+    backupHelp: "קובץ zip אחד עם הקולות שהקלטתם, ההגדרות השמורות, ההגדרות, ההגיות ומפתח ה-API. שמרו אותו במקום בטוח: המפתח בתוכו.",
+    backupLibrary: "כולל הספרייה ({n} הקראות; עלול להיות גדול)", backupDownload: "הורדת גיבוי",
+    restoreHelp: "שחזור מוסיף את הגיבוי למה שכבר יש. קולות והקראות באותו שם מוחלפים; הגדרות שמורות, הגיות והגדרות מתמזגים.",
+    restorePick: "בחירת גיבוי (‎.zip)", restoreStart: "שחזור", restoreNeedFile: "בחרו קודם קובץ גיבוי.",
+    restoreConfirm: "לשחזר את {name}? קולות והקראות באותו שם יוחלפו.", restoring: "משחזר...",
+    restored: "שוחזרו: {voices} קולות, {library} הקראות, {words} הגיות, {presets} הגדרות שמורות{settings}.",
+    restoredSettings: " וההגדרות", restoredKey: " מפתח ה-API מהגיבוי בשימוש עכשיו.",
+    restoredErrors: " בעיות: {list}",
     zonosTitle: "Zonos-Hebrew (לא חובה)",
     zonosHelp: "Zonos רץ ב-Docker על מחשב אחר (ראו docker/zonos-hebrew). כתבו את הכתובת שלו כדי להשתמש בו; הוא קורא עברית בלבד ומציע רגשות. הכתובת נשמרת להפעלה הבאה.",
     zonosConnect: "התחברות", zonosOff: "כיבוי", zonosConnecting: "מתחבר…",
@@ -868,7 +955,7 @@ function go(view) {
   document.querySelectorAll("[data-view]").forEach(s => s.hidden = s.dataset.view !== view);
   document.querySelectorAll(".rail [data-go]").forEach(b => b.dataset.go === view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   storage.set("kol-view", view);
-  if (view === "status") { loadStatus(); loadZonos(); }
+  if (view === "status") { loadStatus(); loadZonos(); loadVoiceSettings(); loadApiKey(); }
   if (view === "documents") updateDocUses();
   $("main").scrollTop = 0;
 }
@@ -894,20 +981,164 @@ function renderStatus() {
   const s = statusData, esc = escapeHtml;
   const gpu = s.gpu ? `<div class="panel stat"><div class="label">${t("gpuMemory")}</div><div class="value">${t("gpuOf", { u: s.gpu.used_gb, t: s.gpu.total_gb })}</div>
       <div class="progress"><div style="width:${Math.round(100 * s.gpu.used_gb / s.gpu.total_gb)}%"></div></div><div class="muted small" style="margin-top:6px">${esc(s.gpu.name)}</div></div>` : "";
+  $("backupLibraryLabel").textContent = t("backupLibrary", { n: s.library_items });
   box.innerHTML = `<div class="stat-grid">${gpu}
       <div class="panel stat"><div class="label">${t("libraryStat")}</div><div class="value">${t("readings", { n: s.library_items })}</div></div>
       <div class="panel stat"><div class="label">${t("jobsStat")}</div><div class="value">${s.jobs_running}</div></div>
       <div class="panel stat"><div class="label">${t("accessStat")}</div><div class="value" style="font-size:14px;font-weight:500">${s.auth ? t("accessKey") : t("accessOpen")}</div></div>
     </div>
-    <div class="panel"><table><thead><tr><th>${t("engine")}</th><th>${t("runs")}</th><th>${t("voicesCol")}</th><th>${t("state")}</th><th></th></tr></thead><tbody>
+    <div class="panel"><table><thead><tr><th>${t("engine")}</th><th>${t("runs")}</th><th>${t("voicesCol")}</th><th>${t("state")}</th><th title="${t("keepLoadedHint")}">${t("keepLoaded")}</th><th></th></tr></thead><tbody>
     ${s.engines.map(e => `<tr><td>${esc(e.label)}</td><td class="muted">${t("where." + e.kind)}${e.gpu ? " · GPU" : ""}</td><td class="num">${e.voices}</td>
       <td>${e.gpu && !e.loaded ? `<span class="dot" style="display:inline-block;margin-inline-end:8px"></span><span class="muted">${t("unloadedState")}</span>`
         : `<span class="dot ${e.alive ? "ok" : "down"}" style="display:inline-block;margin-inline-end:8px"></span>${e.alive ? t("running") : t("notResponding")}`}</td>
+      <td>${e.gpu ? `<input type="checkbox" data-keep="${esc(e.name)}" data-label="${esc(e.label)}" title="${t("keepLoadedHint")}" aria-label="${t("keepLoaded")}: ${esc(e.label)}"${e.keep_loaded ? " checked" : ""}>` : ""}</td>
       <td>${e.gpu ? `<button type="button" class="btn small" data-engine-action="${e.loaded ? "unload" : "load"}" data-engine="${esc(e.name)}">${t(e.loaded ? "unload" : "load")}</button>` : ""}</td></tr>`).join("")}
     </tbody></table></div>`;
   if (document.activeElement !== $("autoUnload")) $("autoUnload").value = String(s.auto_unload_minutes ?? 30);
+  $("haHelp").textContent = s.wyoming_port ? t("haHelp", { port: s.wyoming_port }) : t("haOff");
 }
+$("statusBody").addEventListener("change", async e => {
+  const box = e.target.closest("[data-keep]");
+  if (!box) return;
+  box.disabled = true;
+  try {
+    const r = await postJSON("/settings/keep-loaded", { engine: box.dataset.keep, keep: box.checked }, "PUT");
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    setStatus(t(box.checked ? "keepOn" : "keepOff", { name: box.dataset.label }));
+    statusData = data;
+    renderStatus();
+    if (box.checked) setTimeout(loadStatus, 15000);  // it loads in the background
+  } catch (err) { setStatus(errorText(err), true); loadStatus(); }
+});
+
+// Default voice (Wyoming clients that don't pick one) and what the OpenAI voice names play.
+let voiceSettings = null;
+function fillVoiceSelect(select, value) {
+  select.innerHTML = "";
+  for (const engine of engines()) {
+    const group = document.createElement("optgroup");
+    group.label = engineLabel(voices.find(v => v.engine === engine));
+    for (const v of voices.filter(v => v.engine === engine)) group.append(new Option(voiceLabel(v), v.id));
+    select.append(group);
+  }
+  if (value && !voices.some(v => v.id === value)) select.append(new Option(value, value));
+  select.value = value;
+}
+function renderVoiceSettings(mapping = voiceSettings?.openai) {
+  if (!voiceSettings) return;
+  fillVoiceSelect($("defaultVoice"), voiceSettings.default);
+  const rows = $("openaiMap");
+  rows.innerHTML = "";
+  for (const [name, id] of Object.entries(mapping)) {
+    const tr = document.createElement("tr");
+    const label = document.createElement("td");
+    label.textContent = name;
+    label.dir = "ltr";
+    const cell = document.createElement("td");
+    const select = document.createElement("select");
+    select.dataset.openai = name;
+    select.setAttribute("aria-label", name);
+    fillVoiceSelect(select, id);
+    cell.append(select);
+    tr.append(label, cell);
+    rows.append(tr);
+  }
+}
+async function loadVoiceSettings() {
+  try { voiceSettings = await (await api("/settings/voices")).json(); } catch { voiceSettings = null; }
+  renderVoiceSettings();
+}
+$("voiceMapSave").addEventListener("click", async () => {
+  const openai = Object.fromEntries([...document.querySelectorAll("[data-openai]")].map(s => [s.dataset.openai, s.value]));
+  try {
+    const r = await postJSON("/settings/voices", { default: $("defaultVoice").value, openai }, "PUT");
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    voiceSettings = data;
+    renderVoiceSettings();
+    setStatus(t("voicesSaved"));
+  } catch (e) { setStatus(errorText(e), true); }
+});
+$("voiceMapReset").addEventListener("click", () => renderVoiceSettings(voiceSettings?.openai_defaults));
+
+// API key: shown here so it can be copied or changed without opening api_key.txt (in Docker
+// that file is inside a volume).
+let keyInfo = null;
+async function loadApiKey() {
+  try { keyInfo = await (await api("/settings/api-key")).json(); } catch { keyInfo = null; }
+  renderApiKey();
+}
+function renderApiKey() {
+  const on = keyInfo?.enabled, editable = on && !keyInfo.fixed;
+  $("keyHelp").textContent = !keyInfo ? "" : !on ? t("keyOffHelp") : keyInfo.fixed ? `${t("keyHelp")} ${t("keyFixed")}` : t("keyHelp");
+  $("keyRow").hidden = !on;
+  $("keyActions").hidden = !editable;
+  $("apiKeyValue").readOnly = !editable;
+  if (on && document.activeElement !== $("apiKeyValue")) $("apiKeyValue").value = keyInfo.key;
+}
+async function setApiKey(key) {
+  if (key && !/^[A-Za-z0-9_\-.~]{16,128}$/.test(key)) { setStatus(t("keyInvalid"), true); return; }
+  if (!confirm(t("keyConfirm"))) return;
+  try {
+    const r = await postJSON("/settings/api-key", { key }, "PUT");
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    keyInfo = data;
+    if (storage.get("kol-api-key")) storage.set("kol-api-key", data.key);  // this page keeps working
+    renderApiKey();
+    setStatus(t("keySaved"));
+  } catch (e) { setStatus(errorText(e), true); }
+}
+$("keySave").addEventListener("click", () => setApiKey($("apiKeyValue").value.trim()));
+$("keyNew").addEventListener("click", () => setApiKey(""));
+$("keyCopy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("apiKeyValue").value); }
+  catch { $("apiKeyValue").select(); document.execCommand("copy"); }
+  setStatus(t("keyCopied"));
+});
 $("statusRefresh").addEventListener("click", loadStatus);
+
+// Backup and restore (in Docker the data is inside a volume). The download is a plain link, so
+// a large library streams to disk instead of into the page.
+$("backupDownload").addEventListener("click", () => {
+  $("backupDownload").href = withKey(`/backup?library=${$("backupLibrary").checked}`);
+});
+$("restoreFile").addEventListener("change", () => {
+  const f = $("restoreFile").files[0];
+  $("restoreName").textContent = f ? f.name : t("restorePick");
+  $("restoreName").dir = "auto";
+});
+$("restoreStart").addEventListener("click", async () => {
+  const file = $("restoreFile").files[0];
+  if (!file) { setStatus(t("restoreNeedFile"), true); return; }
+  if (!confirm(t("restoreConfirm", { name: file.name }))) return;
+  const button = $("restoreStart");
+  button.disabled = true;
+  setStatus(t("restoring"), false, true);
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    const r = await api("/restore", { method: "POST", body: form });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    if (data.api_key_changed) {
+      await loadApiKey();
+      if (storage.get("kol-api-key") && keyInfo?.key) storage.set("kol-api-key", keyInfo.key);
+    }
+    const errors = Object.entries(data.errors).map(([k, v]) => `${k}: ${v}`).join("; ");
+    setStatus(t("restored", { voices: data.voices.length, library: data.library, words: data.pronunciations,
+      presets: data.presets, settings: data.settings ? t("restoredSettings") : "" })
+      + (data.api_key_changed ? t("restoredKey") : "") + (errors ? t("restoredErrors", { list: errors }) : ""), !!errors, true);
+    $("restoreFile").value = "";
+    $("restoreName").textContent = t("restorePick");
+    api("/voices").then(r => r.json()).then(renderVoices).catch(() => {});
+    api("/presets").then(r => r.json()).then(renderPresets).catch(() => {});
+    api("/pronunciations").then(r => r.json()).then(renderLexicon).catch(() => {});
+    refreshLibrary(); loadStatus(); loadVoiceSettings(); loadZonos();
+  } catch (e) { setStatus(errorText(e), true); }
+  finally { button.disabled = false; }
+});
 
 // GPU memory: unload engines by hand or after a while unused; an unloaded engine loads by itself
 // on its next reading (the player says so while it does).

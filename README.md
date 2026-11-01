@@ -175,7 +175,7 @@ The image holds the code and every engine's Python environment (about 9.4 GB to 
 models: the app downloads them into a volume the first time each engine starts.
 
 ```bash
-docker run -d --gpus all -p 8010:8010   -v /srv/voice/models:/app/models   -v /srv/voice/data:/data   ghcr.io/tm1981/hebrew-voice-studio:latest
+docker run -d --gpus all -p 8010:8010 -p 10200:10200   -v /srv/voice/models:/app/models   -v /srv/voice/data:/data   ghcr.io/tm1981/hebrew-voice-studio:latest
 ```
 
 To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder.
@@ -188,6 +188,11 @@ To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder
   their models). Every GPU engine together needs about 20-23 GB of GPU memory; unused ones
   unload by themselves after 30 minutes.
 - `ZONOS_URL=http://<host>:7860/` connects Zonos-Hebrew (or set it in the web UI).
+- Port 10200 is the Wyoming port for [Home Assistant](#home-assistant).
+- In Docker, clients that reach the app through Docker's own gateway address (for example
+  from the Docker host itself) always need the API key, since that address can stand for
+  anyone. The key is in the log at startup and under **Server status → API key**, where it can
+  be changed.
 - For Portainer or `docker compose`, use [`docker/voice/docker-compose.yml`](docker/voice/docker-compose.yml).
 - The host needs the NVIDIA driver and the NVIDIA Container Toolkit. The image is built for
   CUDA 12.8 and runs on RTX 30xx, 40xx and 50xx cards.
@@ -286,9 +291,53 @@ curl http://localhost:8010/options
 ```
 
 Voices are named `<engine>/<voice>`, for example `lightblue/noa`, `kokoro/emma_shaul` or
-`omnivoice/<your voice>`. OpenAI voice names (alloy, nova, shimmer, onyx...) map to similar
-voices here. The full list of endpoints is at the top of `server.py`, and interactive docs
-are at http://localhost:8010/docs.
+`omnivoice/<your voice>`. OpenAI voice names (alloy, nova, shimmer, onyx...) map to voices
+here; which voice each one plays can be changed under **Server status → Home Assistant and
+other apps**. With `"response_format": "pcm"` or `"wav"` the OpenAI endpoint streams the audio
+sentence by sentence; the other formats come as one finished file. The full list of
+endpoints is at the top of `server.py`, and interactive docs are at http://localhost:8010/docs.
+
+## Home Assistant
+
+The server also speaks the **Wyoming protocol** (port 10200), which Home Assistant uses for
+local voices:
+
+1. In Home Assistant: **Settings → Devices & services → Add integration → Wyoming Protocol**.
+2. Host: the address of the machine running this app; port: `10200`.
+3. Every voice appears in Home Assistant (in the TTS options of automations and of voice
+   assistants). Without a choice there, the **default voice** set under **Server status** is
+   used.
+
+Audio goes back sentence by sentence, and a voice assistant's reply is read while it's still
+being written. For quick announcements:
+
+- Tick **Keep loaded** for the GPU engine you use (Server status): it loads when the server
+  starts and isn't unloaded for being idle, so announcements don't wait 10-60 seconds for a
+  model. The CPU engines (LightBlue, Blue 2.5, Kokoro) are always ready.
+- Wyoming has no API key, so it lets in only the clients the HTTP API lets in without one:
+  this machine and the home network (neither with `--lan-needs-key`, and never Docker's
+  gateway address). To allow exactly some addresses instead, set e.g.
+  `WYOMING_ALLOW=192.168.1.20` (Home Assistant's address; networks like `10.0.0.0/24` work
+  too). Don't forward port 10200 from the internet. `--wyoming-port 0` turns it off.
+
+The OpenAI-compatible endpoint works too (e.g. the OpenAI TTS custom integration): URL
+`http://<host>:8010/v1/audio/speech`, your API key, any voice name from this app.
+
+## The API key
+
+**Server status → API key** shows the key, copies it, sets your own or generates a new one
+(saved to `api_key.txt` in the data folder, and used at once). A key passed with `--api-key` or
+`TTS_API_KEY` is shown but can only be changed there.
+
+## Backup and restore
+
+**Server status → Backup** downloads one zip with your recorded voices, presets, settings,
+pronunciations and the API key, and optionally the whole library of readings. **Restore** adds a
+backup to what's there: voices and readings with the same name are replaced, presets,
+pronunciations and settings are merged, and everything applies without a restart. This is the
+easy way to move to another machine or rebuild the Docker container, where the data otherwise
+sits inside a volume. The backup holds the API key, so keep it private. From scripts:
+`GET /backup?library=true` and `POST /restore` (a file upload named `file`).
 
 ## Project layout
 
@@ -299,6 +348,7 @@ are at http://localhost:8010/docs.
 | `workers/` | OmniVoice, Higgs, QwenTTS-he, Magpie and F5-TTS servers, each run in its own conda env. |
 | `text_prep.py`, `niqqud.py`, `script.py` | Hebrew normalization, niqqud handling, pauses and dialogue. |
 | `library.py`, `documents.py` | Saved readings and long-document jobs. |
+| `backup.py`, `wyoming_service.py` | Backup/restore of your data; the Wyoming server for Home Assistant. |
 | `chatterbox_fixes.py` | Fixes that make Chatterbox stable on Hebrew. |
 | `web/index.html` | The whole web UI (one file). |
 | `voices/` | Your cloned voices (one file or folder per voice); `voices/.cache` is rebuilt as needed. These and the next two rows are in `DATA_DIR` (this folder unless set; `/data` in Docker). |

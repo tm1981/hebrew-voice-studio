@@ -18,6 +18,7 @@ services:
     container_name: hebrew-voice
     ports:
       - "8010:8010"
+      - "10200:10200"  # Wyoming, for Home Assistant (Settings -> Devices & services -> Wyoming Protocol)
     environment:
       - NVIDIA_VISIBLE_DEVICES=all  # or the GPU index, e.g. 0, if the host has several
       # - TZ=Asia/Jerusalem         # optional: local time for logs and library timestamps
@@ -31,6 +32,11 @@ services:
       # name as below; from a separate stack use the host's address, e.g. http://<docker-host>:7860/
       # (it can also be set later in the web UI: Server status -> Zonos-Hebrew).
       # - ZONOS_URL=http://zonos-hebrew:7860/
+      # Wyoming (port 10200) lets in the home network, but not clients that arrive through
+      # Docker's gateway address. If Home Assistant gets "refused", or to allow only Home
+      # Assistant, list its address (comma-separated; networks like 192.168.1.0/24 work too):
+      # - WYOMING_ALLOW=192.168.1.20
+      # - WYOMING_PORT=0              # turns Wyoming off
     volumes:
       # Models and the Hugging Face cache (models/hf). Named volume by default; to keep them in a
       # host folder instead, replace the line with e.g.:

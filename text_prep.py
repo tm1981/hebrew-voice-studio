@@ -99,6 +99,12 @@ class Dictionary:
             self.entries[word] = reading
             self._save()
 
+    def merge(self, entries: dict[str, str]):
+        """Adds these words (a restored backup); a word already here takes the new reading."""
+        with self.lock:
+            self.entries.update(entries)
+            self._save()
+
     def remove(self, word: str):
         with self.lock:
             self.entries.pop(word, None)

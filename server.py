@@ -52,11 +52,17 @@ Endpoints:
                                                             loads by itself on its next request)
     POST   /gpu/free                                     -> unload every GPU engine that isn't busy
     GET    /settings/auto-unload  /  PUT {"minutes"}     -> unload GPU engines unused that long (0 = off)
+    PUT    /settings/keep-loaded {"engine", "keep"}      -> load a GPU engine at startup and never auto-unload it
+    GET    /settings/voices  /  PUT {"default", "openai"} -> default voice; what OpenAI voice names play
+    GET    /settings/api-key  /  PUT {"key"}             -> show the API key; set it ("" = a new random one)
+    GET    /backup?library=true  /  POST /restore (file)  -> one zip of your data; add a backup back
     GET    /pronunciations                               -> {"word": "reading", ...}
     PUT    /pronunciations {"word", "reading"}  /  DELETE /pronunciations/{word}
     POST   /v1/audio/speech                              -> OpenAI-compatible TTS (see openai_speech)
     GET    /v1/models, /v1/audio/voices, /v1/audio/models
     GET    /docs                                         -> interactive Swagger UI
+
+Home Assistant: a Wyoming protocol server on port 10200 (--wyoming-port, 0 = off); see wyoming_service.py.
 """
 import subprocess
 import sys
@@ -86,7 +92,7 @@ import re
 import secrets
 import threading
 import time
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 import soundfile as sf
@@ -96,6 +102,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFi
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+import backup
 from chatterbox_fixes import DEFAULT_TEMPERATURE
 from paths import DATA_DIR
 from engines import (
@@ -125,6 +132,8 @@ parser.add_argument("--zonos-url", default=None,
                     help="Zonos-Hebrew Gradio server, e.g. http://<docker-host>:7860/ (\"\" turns it off). "
                          "Without it: the address saved in the web UI, else ZONOS_URL")
 parser.add_argument("--lan-needs-key", action="store_true", help="also require the key from the home network")
+parser.add_argument("--wyoming-port", type=int, default=int(os.environ.get("WYOMING_PORT", 10200)),
+                    help="Wyoming protocol port for Home Assistant (0 turns it off)")
 args = parser.parse_args()
 
 DEVICE = os.environ.get("TTS_DEVICE", default_device())
@@ -168,7 +177,7 @@ def trusted_client(host: str) -> bool:
         return False
     return ip.is_loopback or (not args.lan_needs_key and ip.is_private and not ip.is_link_local)
 
-OPEN_PATHS = {"/", "/favicon.ico", "/docs", "/openapi.json"}  # the UI page asks for the key itself
+OPEN_PATHS = {"/", "/favicon.ico", "/docs", "/openapi.json", "/health"}  # the UI page asks for the key itself
 
 
 def load_api_key() -> str | None:
@@ -181,7 +190,7 @@ def load_api_key() -> str | None:
     return API_KEY_FILE.read_text(encoding="utf-8").strip()
 
 
-API_KEY = load_api_key()
+API_KEY = load_api_key()  # replaced when the key is changed from the web UI (set_api_key)
 dictionary = Dictionary()
 library = Library()
 api_cache = MemoryCache()
@@ -202,6 +211,36 @@ atexit.register(stop_workers, engines)
 app = FastAPI(title="Hebrew TTS")
 if API_KEY:
     print(f"API key for requests from outside the home network: {API_KEY}  (also in {API_KEY_FILE.name})")
+
+
+API_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_\-.~]{16,128}$")
+
+
+class ApiKeySetting(BaseModel):
+    key: str = ""  # empty: generate a new random key
+
+
+@app.get("/settings/api-key")
+def api_key_settings():
+    """The key, for the web UI (anyone who can call this already has access). fixed: it comes
+    from --api-key / TTS_API_KEY and can't be changed here."""
+    return {"enabled": API_KEY is not None, "key": API_KEY, "fixed": bool(args.api_key), "file": str(API_KEY_FILE)}
+
+
+@app.put("/settings/api-key")
+def set_api_key(body: ApiKeySetting):
+    """Replace the key (saved to api_key.txt, used at once). Clients using the old key stop working."""
+    global API_KEY
+    if API_KEY is None:
+        raise HTTPException(409, "The server runs with --no-auth; there's no key to change.")
+    if args.api_key:
+        raise HTTPException(409, "The key is set with --api-key or TTS_API_KEY; change it there.")
+    key = body.key.strip() or secrets.token_urlsafe(24)
+    if not API_KEY_PATTERN.match(key):
+        raise HTTPException(400, "A key is 16 to 128 letters, digits, - _ . or ~.")
+    API_KEY_FILE.write_text(key, encoding="utf-8")
+    API_KEY = key
+    return api_key_settings()
 
 
 @app.middleware("http")
@@ -443,24 +482,32 @@ def add_voice(name: str = Form(...), files: list[UploadFile] = File(...)):
         folder.mkdir()
         for i, (f, suffix) in enumerate(zip(files, suffixes), 1):
             (folder / f"clip{i}{suffix}").write_bytes(f.file.read())
-    errors = {}
     try:
-        clip = prepared_clip(name)
+        errors = register_voice(name)
     except Exception as e:
         remove_voice_files(name)
         raise HTTPException(400, f"Could not read that recording: {e}")
-    for engine in engines.values():
-        if engine.custom_voices:
-            try:
-                engine.add_voice(name, clip)
-            except Exception as e:  # one engine failing shouldn't lose the voice everywhere
-                errors[engine.label] = str(e)
     if not any(name in e.voices for e in engines.values()):
         remove_voice_files(name)
         raise HTTPException(400, f"Could not read that recording: {'; '.join(errors.values())}")
     for label, error in errors.items():
         print(f"[WARN] {label}: voice '{name}' not added: {error}")
     return list_voices()
+
+
+def register_voice(name: str) -> dict[str, str]:
+    """Hands a custom voice's recordings (already in voices/) to every engine that clones
+    voices. Returns {engine label: error} for engines that couldn't use them; raises if the
+    recordings can't be read at all."""
+    clip = prepared_clip(name)
+    errors = {}
+    for engine in engines.values():
+        if engine.custom_voices:
+            try:
+                engine.add_voice(name, clip)
+            except Exception as e:  # one engine failing shouldn't lose the voice everywhere
+                errors[engine.label] = str(e)
+    return errors
 
 
 @app.delete("/voices/{name}")
@@ -522,9 +569,7 @@ def tts(req: TTSRequest):
     items = plan(req)
     key = request_key(req, items)
     t0 = time.perf_counter()
-    cached = api_cache.get(key) if req.use_cache else None
-    if cached is None and req.use_cache and (meta := library.find(key)):
-        cached = sf.read(library.full_path(meta["id"]), dtype="float32")
+    cached = cached_reading(req, key)
     if cached is not None:
         audio, rate = cached
     else:
@@ -541,6 +586,49 @@ def tts(req: TTSRequest):
             "X-Cache": "hit" if cached is not None else "miss",
         },
     )
+
+
+def cached_reading(req: TTSRequest, key: str) -> tuple[np.ndarray, int] | None:
+    """An identical earlier reading: memory cache, else the library."""
+    if not req.use_cache:
+        return None
+    cached = api_cache.get(key)
+    if cached is None and (meta := library.find(key)):
+        cached = sf.read(library.full_path(meta["id"]), dtype="float32")
+    return cached
+
+
+def reading_pieces(req: TTSRequest) -> tuple[int, Iterator[np.ndarray]]:
+    """For players that start before the end (Wyoming, streamed /v1 audio): (sample rate, the
+    reading as audio pieces at that rate, each sentence with the gap or pause before it). The
+    next sentence is generated when the next piece is asked for; the whole reading then goes
+    into the memory cache. Errors (HTTPException) come from plan() at once, or from the
+    generator part-way."""
+    items = plan(req)
+    key = request_key(req, items)
+    cached = cached_reading(req, key)
+    if cached is not None:
+        return cached[1], iter([cached[0]])
+    rate = max(resolve_voice(i[1])[0].sample_rate for i in items if i[0] == "speech")
+
+    def pieces():
+        results, silence = [], np.zeros(0, dtype=np.float32)
+        for item in items:
+            if item[0] == "pause":
+                results.append((item, None, 0))
+                silence = np.concatenate([silence, np.zeros(int(rate * item[1]), dtype=np.float32)])
+                continue
+            audio, sr = speak_item(item, req)
+            if results and results[-1][0][0] == "speech":
+                silence = np.concatenate([silence, np.zeros(int(rate * req.sentence_pause), dtype=np.float32)])
+            results.append((item, audio, sr))
+            yield np.concatenate([silence, to_rate(audio, sr, rate).astype(np.float32)])
+            silence = np.zeros(0, dtype=np.float32)
+        if len(silence):
+            yield silence
+        api_cache.put(key, *assemble(results, req.sentence_pause))
+
+    return rate, pieces()
 
 
 def frame(kind: bytes, payload: bytes) -> bytes:
@@ -797,6 +885,49 @@ def auto_unload_settings_set(body: AutoUnloadSettings):
     return auto_unload
 
 
+class KeepLoadedSetting(BaseModel):
+    engine: str
+    keep: bool
+
+
+# GPU engines that load at startup and are never unloaded for being idle (e.g. the voice Home
+# Assistant uses, so announcements don't wait for a model to load). Unload and Free GPU memory
+# still unload them.
+keep_loaded = set(load_settings().get("keep_loaded", []))
+
+
+def load_in_background(engine) -> None:
+    def run():
+        try:
+            with engine.lock:
+                engine.ensure_loaded()
+        except Exception as e:
+            print(f"[WARN] couldn't load {engine.label}: {e}")
+
+    threading.Thread(target=run, daemon=True, name=f"load-{engine.name}").start()
+
+
+@app.put("/settings/keep-loaded")
+def keep_loaded_set(body: KeepLoadedSetting):
+    """Keep one GPU engine loaded (it starts loading now), or let it unload when idle again."""
+    engine = gpu_engine(body.engine)
+    if body.keep:
+        keep_loaded.add(engine.name)
+        load_in_background(engine)
+    else:
+        keep_loaded.discard(engine.name)
+    save_settings(keep_loaded=sorted(keep_loaded))
+    return status()
+
+
+def preload_kept_engines() -> None:
+    from engines import OnDemand
+
+    for name in keep_loaded:
+        if isinstance(engines.get(name), OnDemand):
+            load_in_background(engines[name])
+
+
 def auto_unload_loop() -> None:
     """Unloads a GPU engine that hasn't read anything for auto_unload minutes."""
     from engines import OnDemand
@@ -805,6 +936,8 @@ def auto_unload_loop() -> None:
         time.sleep(30)
         limit = auto_unload["minutes"] * 60
         for engine in list(engines.values()):
+            if engine.name in keep_loaded:
+                continue
             if limit and isinstance(engine, OnDemand) and engine.loaded and time.monotonic() - engine.last_used > limit:
                 try:
                     engine.unload(wait=False)
@@ -813,6 +946,93 @@ def auto_unload_loop() -> None:
 
 
 threading.Thread(target=auto_unload_loop, daemon=True, name="auto-unload").start()
+
+
+# --- Backup and restore of the user's data (see backup.py), from the web UI: in Docker the data
+# is inside a volume
+
+@app.get("/backup")
+def backup_download(library: bool = False):
+    """A zip of the custom voices, presets, settings, pronunciations and the API key; with
+    library=true also every reading in the library."""
+    import tempfile
+
+    from starlette.background import BackgroundTask
+
+    fd, path = tempfile.mkstemp(suffix=".zip")
+    os.close(fd)
+    try:
+        backup.write_backup(Path(path), library)
+    except Exception:
+        os.unlink(path)
+        raise
+    return FileResponse(path, media_type="application/zip", filename=f"hebrew-voice-backup-{time.strftime('%Y%m%d-%H%M')}.zip",
+                        background=BackgroundTask(os.unlink, path))
+
+
+@app.post("/restore")
+def restore_upload(file: UploadFile = File(...)):
+    """Adds a backup to what's here and applies it at once: voices and readings of the same
+    name are replaced; presets, pronunciations and settings are merged (the backup's values
+    win); the key is taken unless it's set with --api-key or the server runs with --no-auth."""
+    global API_KEY
+    builtin = {n for e in engines.values() for n in e.builtin_voices}
+
+    def clear_voice(name: str) -> bool:
+        if not VOICE_NAME.match(name) or name in builtin:
+            return False
+        for engine in engines.values():
+            engine.remove_voice(name)
+        remove_voice_files(name)
+        return True
+
+    try:
+        result = backup.restore(file.file, clear_voice)
+    except backup.BackupError as e:
+        raise HTTPException(400, str(e))
+    errors = {}
+    for name in result["voices"]:
+        try:
+            errors.update({f"{name} ({label})": error for label, error in register_voice(name).items()})
+        except Exception as e:
+            errors[name] = f"Could not read that recording: {e}"
+    library.reindex()
+    restored = result["json"]
+    words = {k: v for k, v in restored.get("pronunciations.json", {}).items() if isinstance(v, str) and k.strip()}
+    if words:
+        dictionary.merge(words)
+    if restored.get("presets.json"):
+        PRESETS_FILE.write_text(json.dumps({**load_presets(), **restored["presets.json"]}, ensure_ascii=False, indent=2),
+                                encoding="utf-8")
+    if restored.get("settings.json"):
+        apply_settings(restored["settings.json"])
+    key = result["api_key"]
+    key_changed = bool(key and API_KEY and not args.api_key and API_KEY_PATTERN.match(key) and key != API_KEY)
+    if key_changed:
+        API_KEY_FILE.write_text(key, encoding="utf-8")
+        API_KEY = key
+    return {"voices": result["voices"], "library": len(result["library"]), "pronunciations": len(words),
+            "presets": len(restored.get("presets.json", {})), "settings": "settings.json" in restored,
+            "api_key_changed": key_changed, "skipped": result["skipped"], "errors": errors}
+
+
+def apply_settings(values: dict) -> None:
+    """Settings from a restored backup: saved (merged), and the ones held in memory updated."""
+    from engines import OnDemand
+
+    save_settings(**values)
+    if isinstance(values.get("auto_unload_minutes"), int):
+        auto_unload["minutes"] = values["auto_unload_minutes"]
+    if isinstance(values.get("keep_loaded"), list):
+        keep_loaded.clear()
+        keep_loaded.update(n for n in values["keep_loaded"] if isinstance(engines.get(n), OnDemand))
+        preload_kept_engines()
+    url = values.get("zonos_url")
+    if isinstance(url, str) and args.zonos_url is None and url != zonos_state["url"]:
+        try:
+            zonos_settings_set(ZonosSettings(url=url))
+        except HTTPException as e:
+            zonos_state["error"] = e.detail
 
 
 # --- Long documents: read chapter by chapter in the background into the library
@@ -913,6 +1133,20 @@ def voices_check(files: list[UploadFile] = File(...)):
 
 # --- Status of everything, for the UI's status panel
 
+def gpu_memory() -> tuple[int, int]:
+    """(used, total) bytes on the GPU, by every process: the workers too. torch's own figure
+    covers only this process on Windows and under WSL/Docker, so ask nvidia-smi first."""
+    try:
+        uuid = str(torch.cuda.get_device_properties(0).uuid)
+        out = subprocess.run(["nvidia-smi", f"--id=GPU-{uuid}", "--query-gpu=memory.used,memory.total",
+                              "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5).stdout
+        used, total = (int(float(x)) * 2**20 for x in out.strip().split(","))
+        return used, total
+    except (OSError, ValueError, subprocess.SubprocessError):
+        free, total = torch.cuda.mem_get_info()
+        return total - free, total
+
+
 @app.get("/status")
 def status():
     from engines import OnDemand, RemoteEngine, ZonosEngine
@@ -925,15 +1159,16 @@ def status():
         alive = e._info() is not None if isinstance(e, RemoteEngine) and loaded else loaded
         idle = round((time.monotonic() - e.last_used) / 60, 1) if gpu and loaded else None
         rows.append({"name": e.name, "label": e.label, "kind": kind, "voices": len(e.voices), "alive": alive,
-                     "gpu": gpu, "loaded": loaded, "idle_minutes": idle})
+                     "gpu": gpu, "loaded": loaded, "idle_minutes": idle, "keep_loaded": e.name in keep_loaded})
     gpu = None
     if torch.cuda.is_available():
-        free, total = torch.cuda.mem_get_info()
-        gpu = {"name": torch.cuda.get_device_name(0), "used_gb": round((total - free) / 1e9, 1), "total_gb": round(total / 1e9, 1)}
+        used, total = gpu_memory()
+        gpu = {"name": torch.cuda.get_device_name(0), "used_gb": round(used / 1e9, 1), "total_gb": round(total / 1e9, 1)}
     return {
         "engines": rows, "gpu": gpu, "library_items": len(library.list()), "memory_cache": len(api_cache.items),
         "jobs_running": sum(1 for j in jobs.jobs.values() if j["status"] == "running"),
         "auth": bool(API_KEY), "auto_unload_minutes": auto_unload["minutes"],
+        "wyoming_port": args.wyoming_port or None,
     }
 
 
@@ -968,6 +1203,20 @@ class OpenAISpeechRequest(BaseModel):
     instructions: str | None = None  # accepted for compatibility; not used
 
 
+def voice_map() -> dict[str, str]:
+    """OpenAI voice names -> voices here: the defaults above, with changes saved from the web UI."""
+    return {**OPENAI_VOICES, **load_settings().get("openai_voices", {})}
+
+
+def default_voice() -> str:
+    """The voice for clients that don't name one (Home Assistant over Wyoming): the one chosen
+    in the web UI, else LightBlue's Noa, else the first voice."""
+    for voice_id in (load_settings().get("default_voice"), "lightblue/noa"):
+        if voice_id and resolve_voice_id_exists(voice_id):
+            return voice_id
+    return next((v["id"] for v in list_voices()), DEFAULT_VOICE)
+
+
 def resolve_openai_voice(model: str, voice: str) -> str:
     """'lightblue/noa' as-is; model=<engine> + voice=<name>; an OpenAI voice name; or any
     voice of that name in the first engine that has it."""
@@ -975,8 +1224,9 @@ def resolve_openai_voice(model: str, voice: str) -> str:
         return voice
     if model in engines:
         return f"{model}/{voice}"
-    if voice in OPENAI_VOICES and resolve_voice_id_exists(OPENAI_VOICES[voice]):
-        return OPENAI_VOICES[voice]
+    mapped = voice_map().get(voice)
+    if mapped and resolve_voice_id_exists(mapped):
+        return mapped
     for engine in engines.values():
         if voice in engine.voices:
             return f"{engine.name}/{voice}"
@@ -988,15 +1238,71 @@ def resolve_voice_id_exists(voice_id: str) -> bool:
     return engine_name in engines and name in engines[engine_name].voices
 
 
+def wav_stream_header(rate: int) -> bytes:
+    """A 16-bit mono WAV header for audio of unknown length (sizes at their maximum, as
+    streaming servers send it; players read until the data ends)."""
+    import struct
+
+    return (b"RIFF" + struct.pack("<I", 0xFFFFFFFF) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+            + b"data" + struct.pack("<I", 0xFFFFFFFF))
+
+
 @app.post("/v1/audio/speech")
 def openai_speech(req: OpenAISpeechRequest):
     """OpenAI's POST /v1/audio/speech. Formats: mp3, wav, flac, opus, pcm (aac isn't
-    available here). Speed is clamped to this server's 0.5-2.0."""
+    available here). Speed is clamped to this server's 0.5-2.0. pcm and wav are streamed
+    sentence by sentence, as OpenAI does, so playback can start after the first sentence;
+    the others come as one finished file."""
     fmt = req.response_format.lower()
     if fmt not in MEDIA_TYPES:
         raise HTTPException(400, f"response_format '{fmt}' isn't supported; use {', '.join(MEDIA_TYPES)}")
     voice_id = resolve_openai_voice(req.model, req.voice)
-    return tts(TTSRequest(text=req.input, voice=voice_id, speed=min(max(req.speed, 0.5), 2.0), format=fmt))
+    tts_req = TTSRequest(text=req.input, voice=voice_id, speed=min(max(req.speed, 0.5), 2.0), format=fmt)
+    if fmt not in ("pcm", "wav"):
+        return tts(tts_req)
+    rate, pieces = reading_pieces(tts_req)
+    first = next(pieces)  # the first sentence before answering, so a failure is still an HTTP error
+
+    def body():
+        # pcm: encode() makes it 24 kHz, as OpenAI's; wav keeps the voice's own rate
+        pack = (lambda a: encode(a, rate, "pcm")) if fmt == "pcm" else to_pcm16
+        if fmt == "wav":
+            yield wav_stream_header(rate)
+        yield pack(first)
+        try:
+            for piece in pieces:
+                yield pack(piece)
+        except HTTPException as e:  # too late for an error status; the audio just ends
+            print(f"[WARN] /v1/audio/speech stopped part-way: {e.detail}")
+
+    return StreamingResponse(body(), media_type=MEDIA_TYPES[fmt], headers={"X-Engine": resolve_voice(voice_id)[0].name})
+
+
+def to_pcm16(audio: np.ndarray) -> bytes:
+    return (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+
+
+class VoiceSettings(BaseModel):
+    default: str = ""
+    openai: dict[str, str] = {}
+
+
+@app.get("/settings/voices")
+def voice_settings():
+    """The default voice (Wyoming clients that don't pick one) and what each OpenAI voice name plays."""
+    return {"default": default_voice(), "openai": voice_map(), "openai_defaults": OPENAI_VOICES}
+
+
+@app.put("/settings/voices")
+def voice_settings_set(body: VoiceSettings):
+    unknown = [v for v in [body.default, *body.openai.values()] if v and not resolve_voice_id_exists(v)]
+    if unknown:
+        raise HTTPException(400, f"No voice {', '.join(sorted(set(unknown)))}")
+    if set(body.openai) - set(OPENAI_VOICES):
+        raise HTTPException(400, f"OpenAI voice names are {', '.join(OPENAI_VOICES)}")
+    changed = {name: v for name, v in body.openai.items() if v and v != OPENAI_VOICES[name]}
+    save_settings(default_voice=body.default, openai_voices=changed)
+    return voice_settings()
 
 
 @app.get("/v1/models")
@@ -1013,9 +1319,34 @@ def openai_audio_models():
 @app.get("/v1/audio/voices")
 def openai_audio_voices():
     """Every voice id here plus OpenAI's names, for tools that list voices."""
-    ids = [v["id"] for v in list_voices()] + [n for n, v in OPENAI_VOICES.items() if resolve_voice_id_exists(v)]
+    ids = [v["id"] for v in list_voices()] + [n for n, v in voice_map().items() if resolve_voice_id_exists(v)]
     return {"voices": [{"id": i, "name": i} for i in ids]}
 
 
+# --- Wyoming protocol for Home Assistant (see wyoming_service.py)
+
+def wyoming_speak(text: str, voice_id: str) -> tuple[int, Iterator[np.ndarray]]:
+    """The app's reading pipeline (dictionary, normalization, sentences, cache) for Wyoming,
+    with failures as ValueError messages."""
+    try:
+        rate, pieces = reading_pieces(TTSRequest(text=text, voice=voice_id))
+    except HTTPException as e:
+        raise ValueError(e.detail)
+
+    def checked():
+        try:
+            yield from pieces
+        except HTTPException as e:
+            raise ValueError(e.detail)
+
+    return rate, checked()
+
+
 if __name__ == "__main__":
+    preload_kept_engines()
+    if args.wyoming_port:
+        import wyoming_service
+
+        allowed = wyoming_service.client_policy(trusted_client, os.environ.get("WYOMING_ALLOW", ""))
+        wyoming_service.start(args.host, args.wyoming_port, list_voices, wyoming_speak, default_voice, allowed)
     uvicorn.run(app, host=args.host, port=args.port)
