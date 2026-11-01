@@ -158,11 +158,13 @@ def trusted_client(host: str) -> bool:
     """This PC always; the home network (192.168.x.x, 10.x, 172.16-31.x) unless --lan-needs-key."""
     if host in LOCAL_HOSTS:
         return True
-    if host == DOCKER_GATEWAY:
-        return False
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:  # ::ffff:172.17.0.1 is 172.17.0.1
+        ip = ip.ipv4_mapped
+    if DOCKER_GATEWAY and ip == ipaddress.ip_address(DOCKER_GATEWAY):
         return False
     return ip.is_loopback or (not args.lan_needs_key and ip.is_private and not ip.is_link_local)
 
