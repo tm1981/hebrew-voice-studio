@@ -37,6 +37,9 @@ services:
       # Assistant, list its address (comma-separated; networks like 192.168.1.0/24 work too):
       # - WYOMING_ALLOW=192.168.1.20
       # - WYOMING_PORT=0              # turns Wyoming off
+      # Hebrew speech-to-text for Home Assistant's voice assistant (same Wyoming port); loads on
+      # first use (~2 GB GPU memory). Another Whisper model from Hugging Face, or off:
+      # - STT_MODEL=off
     volumes:
       # Models and the Hugging Face cache (models/hf). Named volume by default; to keep them in a
       # host folder instead, replace the line with e.g.:

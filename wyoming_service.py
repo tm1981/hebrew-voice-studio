@@ -1,6 +1,9 @@
 """Wyoming protocol server, so Home Assistant's Wyoming integration can use this app as a local
-text-to-speech service: Settings > Devices & services > Add integration > Wyoming Protocol,
-host = this machine, port = 10200 (--wyoming-port).
+text-to-speech and speech-to-text service: Settings > Devices & services > Add integration >
+Wyoming Protocol, host = this machine, port = 10200 (--wyoming-port). One entry gives both.
+
+Speech-to-text (Hebrew Whisper, stt.py): Home Assistant sends transcribe, then the recording
+(audio-start / -chunk / -stop) and gets the transcript back.
 
 Home Assistant gets every voice in the app (as "<engine>/<name>") and reads with any of them.
 It can send the text all at once (synthesize) or as it's being written by a voice assistant
@@ -16,13 +19,14 @@ import asyncio
 import ipaddress
 import re
 import threading
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Optional
 
 import numpy as np
-from wyoming.audio import AudioChunk, AudioStart, AudioStop
+from wyoming.asr import Transcribe, Transcript
+from wyoming.audio import AudioChunk, AudioChunkConverter, AudioStart, AudioStop
 from wyoming.error import Error
 from wyoming.event import Event
-from wyoming.info import Attribution, Describe, Info, TtsProgram, TtsVoice
+from wyoming.info import AsrModel, AsrProgram, Attribution, Describe, Info, TtsProgram, TtsVoice
 from wyoming.server import AsyncEventHandler, AsyncTcpServer
 from wyoming.tts import Synthesize, SynthesizeChunk, SynthesizeStart, SynthesizeStop, SynthesizeStopped
 
@@ -35,6 +39,10 @@ ATTRIBUTION = Attribution(name="Hebrew Voice Studio", url="https://github.com/tm
 # speak(text, voice_id) -> (sample_rate, pieces): audio as float32 arrays at that rate, the
 # next piece computed when asked for. Raises ValueError with a message for the client.
 Speak = Callable[[str, str], tuple[int, Iterator[np.ndarray]]]
+# transcribe(audio, language) -> text: mono float32 audio at 16 kHz.
+TranscribeFn = Callable[[np.ndarray, Optional[str]], str]
+STT_RATE = 16000
+MAX_RECORDING_SECONDS = 120  # longer recordings are cut there (a voice command is a few seconds)
 
 
 def client_policy(trusted: Callable[[str], bool], allow: str) -> Callable[[str], bool]:
@@ -58,10 +66,14 @@ def client_policy(trusted: Callable[[str], bool], allow: str) -> Callable[[str],
 
 class Handler(AsyncEventHandler):
     def __init__(self, reader, writer, voices: Callable[[], list[dict]], speak: Speak, default_voice: Callable[[], str],
-                 allowed: Callable[[str], bool]):
+                 allowed: Callable[[str], bool], transcribe: TranscribeFn | None = None, stt_model: str = ""):
         super().__init__(reader, writer)
         self.voices, self.speak, self.default_voice = voices, speak, default_voice
+        self.transcribe, self.stt_model = transcribe, stt_model
         self.stream: dict | None = None  # {"voice", "text", "spoken"} while text arrives in chunks
+        self.language: str | None = None  # from transcribe, for the recording that follows
+        self.recording: list[bytes] | None = None  # 16 kHz 16-bit mono, between audio-start and -stop
+        self.converter = AudioChunkConverter(rate=STT_RATE, width=2, channels=1)
         peer = writer.get_extra_info("peername")
         self.allowed = bool(peer) and allowed(peer[0])
         if not self.allowed:
@@ -85,6 +97,16 @@ class Handler(AsyncEventHandler):
                 await self.read_stream_part(self.stream["text"])
             self.stream = None
             await self.write_event(SynthesizeStopped().event())
+        elif Transcribe.is_type(event.type):
+            self.language = Transcribe.from_event(event).language
+        elif AudioStart.is_type(event.type) and self.transcribe:
+            self.recording = []
+        elif AudioChunk.is_type(event.type) and self.recording is not None:
+            if sum(map(len, self.recording)) < MAX_RECORDING_SECONDS * STT_RATE * 2:
+                self.recording.append(self.converter.convert(AudioChunk.from_event(event)).audio)
+        elif AudioStop.is_type(event.type) and self.recording is not None:
+            pcm, self.recording = b"".join(self.recording), None
+            await self.send_transcript(pcm)
         elif Synthesize.is_type(event.type) and self.stream is None:
             # While streaming, clients also send the whole text this way for older servers; skip it.
             synth = Synthesize.from_event(event)
@@ -99,7 +121,24 @@ class Handler(AsyncEventHandler):
         ]
         program = TtsProgram(name="hebrew-voice-studio", description="Hebrew Voice Studio", attribution=ATTRIBUTION,
                              installed=True, version=None, voices=voices, supports_synthesize_streaming=True)
-        return Info(tts=[program])
+        asr = []
+        if self.transcribe:
+            model = AsrModel(name=self.stt_model, description=f"Whisper ({self.stt_model})", attribution=ATTRIBUTION,
+                             installed=True, version=None, languages=["he"])
+            asr = [AsrProgram(name="hebrew-voice-studio-stt", description="Hebrew Voice Studio speech-to-text",
+                              attribution=ATTRIBUTION, installed=True, version=None, models=[model])]
+        return Info(tts=[program], asr=asr)
+
+    async def send_transcript(self, pcm: bytes) -> None:
+        audio = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+        try:
+            text = await asyncio.to_thread(self.transcribe, audio, self.language or "he")
+        except Exception as e:  # a failed load (e.g. no GPU memory): say so instead of hanging up
+            print(f"[wyoming] speech-to-text failed: {e}")
+            await self.write_event(Error(text=f"Speech-to-text failed: {e}", code="stt-failed").event())
+            return
+        print(f"[wyoming] heard {len(audio) / STT_RATE:.1f}s: {text}")
+        await self.write_event(Transcript(text=text, language=self.language or "he").event())
 
     def voice_id(self, voice) -> str:
         """The voice Home Assistant asked for by name, else the default voice."""
@@ -137,13 +176,14 @@ def split_ready(text: str) -> tuple[str, str]:
 
 
 def start(host: str, port: int, voices: Callable[[], list[dict]], speak: Speak, default_voice: Callable[[], str],
-          allowed: Callable[[str], bool]) -> None:
-    """Serves Wyoming on host:port from a background thread; allowed(ip) decides who may connect."""
+          allowed: Callable[[str], bool], transcribe: TranscribeFn | None = None, stt_model: str = "") -> None:
+    """Serves Wyoming on host:port from a background thread; allowed(ip) decides who may connect.
+    transcribe: speech-to-text, offered too when given."""
 
     def run():
         server = AsyncTcpServer(host, port)
         try:
-            asyncio.run(server.run(lambda r, w: Handler(r, w, voices, speak, default_voice, allowed)))
+            asyncio.run(server.run(lambda r, w: Handler(r, w, voices, speak, default_voice, allowed, transcribe, stt_model)))
         except OSError as e:
             print(f"[WARN] Wyoming server not started on port {port}: {e}")
 

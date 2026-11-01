@@ -681,7 +681,7 @@ const STR = {
     wordPh: "Word, e.g. Claude", readingPh: "Read as, e.g. קלוד", add: "Add", dictEmpty: "The dictionary is empty.",
     needBoth: "Write both the word and how to read it.", cantSave: "Couldn't save the word.", wordSaved: "“{w}” will now be read as “{r}”.",
     refresh: "Refresh", engine: "Engine", runs: "Runs", state: "State", voicesCol: "Voices",
-    "where.local": "On this PC", "where.worker": "Separate process", "where.remote": "Another machine",
+    "where.local": "On this PC", "where.worker": "Separate process", "where.remote": "Another machine", "where.stt": "Speech-to-text", sttLabel: "Hebrew speech recognition (Whisper)",
     running: "Running", notResponding: "Not responding", gpuMemory: "GPU memory", gpuOf: "{u} of {t} GB",
     libraryStat: "Library", readings: "{n} readings", jobsStat: "Documents in progress", accessStat: "Network access",
     accessKey: "Home network open, key needed from outside", accessOpen: "Open to everyone", statusFailed: "Couldn't get the server status.",
@@ -694,7 +694,7 @@ const STR = {
     keepLoaded: "Keep loaded", keepLoadedHint: "Loads at startup and isn't unloaded for being unused",
     keepOn: "{name} stays loaded, and loads at every start.", keepOff: "{name} unloads again when unused.",
     haTitle: "Home Assistant and other apps",
-    haHelp: "In Home Assistant: Settings › Devices & services › Add integration › Wyoming Protocol. Host: this server's address, port {port}. Every voice is offered there; the default voice below is used when none is picked. The Wyoming port works from this computer and the home network only (WYOMING_ALLOW can limit it to Home Assistant's address).",
+    haHelp: "In Home Assistant: Settings › Devices & services › Add integration › Wyoming Protocol. Host: this server's address, port {port}. It gives both speech (every voice is offered) and Hebrew speech-to-text for the voice assistant; the default voice below is used when none is picked. The Wyoming port works from this computer and the home network only (WYOMING_ALLOW can limit it to Home Assistant's address).",
     haOff: "The Wyoming port for Home Assistant is off (the server was started with --wyoming-port 0).",
     defaultVoice: "Default voice",
     openaiMapHelp: "Apps that use the OpenAI voice names (alloy, nova…) get these voices. A full voice name such as lightblue/noa always works too.",
@@ -826,7 +826,7 @@ const STR = {
     wordPh: "המילה, למשל: Claude", readingPh: "איך לקרוא, למשל: קלוד", add: "הוספה", dictEmpty: "המילון ריק.",
     needBoth: "כתבו גם את המילה וגם איך לקרוא אותה.", cantSave: "לא ניתן לשמור את המילה.", wordSaved: "\"{w}\" יוקרא מעכשיו \"{r}\".",
     refresh: "רענון", engine: "מנוע", runs: "היכן רץ", state: "מצב", voicesCol: "קולות",
-    "where.local": "במחשב הזה", "where.worker": "תהליך נפרד", "where.remote": "מחשב אחר",
+    "where.local": "במחשב הזה", "where.worker": "תהליך נפרד", "where.remote": "מחשב אחר", "where.stt": "זיהוי דיבור", sttLabel: "זיהוי דיבור בעברית (Whisper)",
     running: "פועל", notResponding: "לא מגיב", gpuMemory: "זיכרון GPU", gpuOf: "{u} מתוך {t} GB",
     libraryStat: "ספרייה", readings: "{n} הקראות", jobsStat: "מסמכים בעבודה", accessStat: "גישה מהרשת",
     accessKey: "פתוח ברשת הביתית, מפתח נדרש מבחוץ", accessOpen: "פתוחה לכולם", statusFailed: "לא ניתן לקבל את מצב השרת.",
@@ -839,7 +839,7 @@ const STR = {
     keepLoaded: "להשאיר טעון", keepLoadedHint: "נטען בהפעלה ולא נפרק כשאינו בשימוש",
     keepOn: "{name} יישאר טעון, וייטען בכל הפעלה.", keepOff: "{name} ייפרק שוב כשאינו בשימוש.",
     haTitle: "Home Assistant ואפליקציות אחרות",
-    haHelp: "ב-Home Assistant: Settings › Devices & services › Add integration › Wyoming Protocol. Host: הכתובת של השרת הזה, פורט {port}. כל הקולות מוצעים שם; קול ברירת המחדל שלמטה משמש כשלא נבחר קול. פורט Wyoming עובד רק מהמחשב הזה ומהרשת הביתית (WYOMING_ALLOW יכול להגביל אותו לכתובת של Home Assistant).",
+    haHelp: "ב-Home Assistant: Settings › Devices & services › Add integration › Wyoming Protocol. Host: הכתובת של השרת הזה, פורט {port}. הוא נותן גם הקראה (כל הקולות מוצעים) וגם זיהוי דיבור בעברית לעוזר הקולי; קול ברירת המחדל שלמטה משמש כשלא נבחר קול. פורט Wyoming עובד רק מהמחשב הזה ומהרשת הביתית (WYOMING_ALLOW יכול להגביל אותו לכתובת של Home Assistant).",
     haOff: "פורט Wyoming ל-Home Assistant כבוי (השרת הופעל עם ‎--wyoming-port 0).",
     defaultVoice: "קול ברירת מחדל",
     openaiMapHelp: "אפליקציות שמשתמשות בשמות הקולות של OpenAI (alloy, nova…) מקבלות את הקולות האלה. שם קול מלא כמו lightblue/noa תמיד עובד גם כן.",
@@ -988,7 +988,7 @@ function renderStatus() {
       <div class="panel stat"><div class="label">${t("accessStat")}</div><div class="value" style="font-size:14px;font-weight:500">${s.auth ? t("accessKey") : t("accessOpen")}</div></div>
     </div>
     <div class="panel"><table><thead><tr><th>${t("engine")}</th><th>${t("runs")}</th><th>${t("voicesCol")}</th><th>${t("state")}</th><th title="${t("keepLoadedHint")}">${t("keepLoaded")}</th><th></th></tr></thead><tbody>
-    ${s.engines.map(e => `<tr><td>${esc(e.label)}</td><td class="muted">${t("where." + e.kind)}${e.gpu ? " · GPU" : ""}</td><td class="num">${e.voices}</td>
+    ${s.engines.map(e => `<tr><td>${e.kind === "stt" ? t("sttLabel") : esc(e.label)}</td><td class="muted">${t("where." + e.kind)}${e.gpu ? " · GPU" : ""}</td><td class="num">${e.kind === "stt" ? "–" : e.voices}</td>
       <td>${e.gpu && !e.loaded ? `<span class="dot" style="display:inline-block;margin-inline-end:8px"></span><span class="muted">${t("unloadedState")}</span>`
         : `<span class="dot ${e.alive ? "ok" : "down"}" style="display:inline-block;margin-inline-end:8px"></span>${e.alive ? t("running") : t("notResponding")}`}</td>
       <td>${e.gpu ? `<input type="checkbox" data-keep="${esc(e.name)}" data-label="${esc(e.label)}" title="${t("keepLoadedHint")}" aria-label="${t("keepLoaded")}: ${esc(e.label)}"${e.keep_loaded ? " checked" : ""}>` : ""}</td>

@@ -300,7 +300,7 @@ endpoints is at the top of `server.py`, and interactive docs are at http://local
 ## Home Assistant
 
 The server also speaks the **Wyoming protocol** (port 10200), which Home Assistant uses for
-local voices:
+local voices and speech-to-text:
 
 1. In Home Assistant: **Settings → Devices & services → Add integration → Wyoming Protocol**.
 2. Host: the address of the machine running this app; port: `10200`.
@@ -322,6 +322,23 @@ being written. For quick announcements:
 
 The OpenAI-compatible endpoint works too (e.g. the OpenAI TTS custom integration): URL
 `http://<host>:8010/v1/audio/speech`, your API key, any voice name from this app.
+
+### Speech-to-text
+
+The same Wyoming entry also offers **Hebrew speech-to-text**, so the voice assistant can
+understand spoken Hebrew without the cloud. In **Settings → Voice assistants**, pick a
+Hebrew assistant and choose this app as both speech-to-text and text-to-speech.
+
+- The model is [ivrit-ai/whisper-large-v3-turbo](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo),
+  Whisper fine-tuned on Hebrew (Apache-2.0). It downloads (about 1.6 GB) on first use and takes
+  about 2 GB of GPU memory.
+- It shows up in **Server status** with the engines: tick **Keep loaded** so the first command
+  doesn't wait a few seconds for it to load. Once loaded, a short command takes about 0.1 s on
+  an RTX 5090.
+- `--stt-model` (or `STT_MODEL`) picks another Whisper model from Hugging Face, e.g.
+  `ivrit-ai/whisper-large-v3`; `off` turns speech-to-text off.
+- OpenAI-compatible too: `POST /v1/audio/transcriptions` with a `file` (wav, mp3, flac, ogg),
+  optional `language` (default `he`) and `response_format` (`json` or `text`).
 
 ## The API key
 
@@ -402,6 +419,7 @@ consent of the person whose voice it is.
 | Higgs | Higgs TTS 3 (4B) by Boson AI (`bosonai/higgs-tts-3-4b`), run through the plain-transformers port `multimodalart/higgs-audio-v3-tts-4b-transformers` (the same weights file, plus modeling code), with the codec `bosonai/higgs-audio-v2-tokenizer` | **Research and non-commercial** (Boson Higgs TTS 3 license; its Creator Use Grant allows monetized creator content if it credits Boson AI's Higgs Audio) | [model](https://huggingface.co/bosonai/higgs-tts-3-4b) · [port](https://huggingface.co/multimodalart/higgs-audio-v3-tts-4b-transformers) · [codec](https://huggingface.co/bosonai/higgs-audio-v2-tokenizer) |
 | F5-TTS Hebrew | Hebrew fine-tune `Yzamari/f5tts-hebrew-v2` of F5-TTS v1 Base, with the Vocos vocoder `charactr/vocos-mel-24khz` | Apache 2.0 (the F5-TTS v1 Base weights it starts from are CC BY-NC 4.0, so commercial use is unclear) | [model](https://huggingface.co/Yzamari/f5tts-hebrew-v2) · [code](https://github.com/SWivid/F5-TTS) |
 | Zonos (optional) | Zonos-Hebrew (`notmax123/Zonos-Hebrew`), built on Zyphra's Zonos | **CC BY-NC 4.0** (non-commercial) | [model](https://huggingface.co/notmax123/Zonos-Hebrew) · [code](https://github.com/maxmelichov/Zonos-Hebrew) |
+| Speech-to-text | Hebrew fine-tune `ivrit-ai/whisper-large-v3-turbo` of OpenAI's Whisper large-v3-turbo | Apache 2.0 | [model](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo) |
 
 ### Hebrew text and helper models
 

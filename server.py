@@ -59,10 +59,12 @@ Endpoints:
     GET    /pronunciations                               -> {"word": "reading", ...}
     PUT    /pronunciations {"word", "reading"}  /  DELETE /pronunciations/{word}
     POST   /v1/audio/speech                              -> OpenAI-compatible TTS (see openai_speech)
+    POST   /v1/audio/transcriptions (file)               -> OpenAI-compatible speech-to-text (Hebrew Whisper)
     GET    /v1/models, /v1/audio/voices, /v1/audio/models
     GET    /docs                                         -> interactive Swagger UI
 
-Home Assistant: a Wyoming protocol server on port 10200 (--wyoming-port, 0 = off); see wyoming_service.py.
+Home Assistant: a Wyoming protocol server on port 10200 (--wyoming-port, 0 = off) for speech
+and speech-to-text (stt.py; --stt-model, "off" = no speech-to-text); see wyoming_service.py.
 """
 import subprocess
 import sys
@@ -121,6 +123,7 @@ from documents import MAX_DOCUMENT_CHARS, Jobs, extract_text, split_chapters, zi
 from engines import check_recording
 from library import SENTENCE_GAP, Library, MemoryCache, cache_key, to_rate
 from script import detect_speakers, parse
+from stt import SpeechToText, decode_audio
 from text_prep import Dictionary, prepare
 
 parser = argparse.ArgumentParser()
@@ -134,6 +137,8 @@ parser.add_argument("--zonos-url", default=None,
 parser.add_argument("--lan-needs-key", action="store_true", help="also require the key from the home network")
 parser.add_argument("--wyoming-port", type=int, default=int(os.environ.get("WYOMING_PORT", 10200)),
                     help="Wyoming protocol port for Home Assistant (0 turns it off)")
+parser.add_argument("--stt-model", default=os.environ.get("STT_MODEL", "ivrit-ai/whisper-large-v3-turbo"),
+                    help="Whisper model for speech-to-text (Hugging Face id; \"off\" turns it off)")
 args = parser.parse_args()
 
 DEVICE = os.environ.get("TTS_DEVICE", default_device())
@@ -234,6 +239,12 @@ def load_settings() -> dict:
 # Zonos address: --zonos-url, else the one saved from the web UI, else ZONOS_URL; empty = off.
 zonos_url = args.zonos_url if args.zonos_url is not None else load_settings().get("zonos_url", os.environ.get("ZONOS_URL", ""))
 engines = load_engines(DEVICE, args.port, zonos_url)
+stt = None if args.stt_model.strip().lower() in ("", "off", "none") else SpeechToText(DEVICE, args.stt_model.strip())
+
+
+def gpu_parts() -> dict:
+    """The engines plus speech-to-text: everything that can be loaded, unloaded and kept loaded."""
+    return {**engines, "stt": stt} if stt else engines
 zonos_state = {"url": zonos_url, "error": "Couldn't connect at startup." if zonos_url and "zonos" not in engines else None}
 atexit.register(stop_workers, engines)
 app = FastAPI(title="Hebrew TTS")
@@ -862,7 +873,7 @@ def save_settings(**values) -> None:
 def gpu_engine(name: str):
     from engines import OnDemand
 
-    engine = engines.get(name)
+    engine = gpu_parts().get(name)
     if not isinstance(engine, OnDemand):
         raise HTTPException(404, f"No GPU engine '{name}'")
     return engine
@@ -891,7 +902,7 @@ def gpu_free():
     """Unloads every GPU engine that isn't reading right now; busy ones are listed."""
     from engines import OnDemand
 
-    busy = [e.label for e in engines.values() if isinstance(e, OnDemand) and not e.unload(wait=False)]
+    busy = [e.label for e in gpu_parts().values() if isinstance(e, OnDemand) and not e.unload(wait=False)]
     return {**status(), "busy": busy}
 
 
@@ -953,8 +964,8 @@ def preload_kept_engines() -> None:
     from engines import OnDemand
 
     for name in keep_loaded:
-        if isinstance(engines.get(name), OnDemand):
-            load_in_background(engines[name])
+        if isinstance(gpu_parts().get(name), OnDemand):
+            load_in_background(gpu_parts()[name])
 
 
 def auto_unload_loop() -> None:
@@ -964,7 +975,7 @@ def auto_unload_loop() -> None:
     while True:
         time.sleep(30)
         limit = auto_unload["minutes"] * 60
-        for engine in list(engines.values()):
+        for engine in list(gpu_parts().values()):
             if engine.name in keep_loaded:
                 continue
             if limit and isinstance(engine, OnDemand) and engine.loaded and time.monotonic() - engine.last_used > limit:
@@ -1058,7 +1069,7 @@ def apply_settings(values: dict) -> None:
         auto_unload["minutes"] = values["auto_unload_minutes"]
     if isinstance(values.get("keep_loaded"), list):
         keep_loaded.clear()
-        keep_loaded.update(n for n in values["keep_loaded"] if isinstance(engines.get(n), OnDemand))
+        keep_loaded.update(n for n in values["keep_loaded"] if isinstance(gpu_parts().get(n), OnDemand))
         preload_kept_engines()
     url = values.get("zonos_url")
     if isinstance(url, str) and args.zonos_url is None and url != zonos_state["url"]:
@@ -1185,8 +1196,9 @@ def status():
     from engines import OnDemand, RemoteEngine, ZonosEngine
 
     rows = []
-    for e in engines.values():
-        kind = "worker" if isinstance(e, RemoteEngine) else "remote" if isinstance(e, ZonosEngine) else "local"
+    for e in gpu_parts().values():
+        kind = ("worker" if isinstance(e, RemoteEngine) else "remote" if isinstance(e, ZonosEngine)
+                else "stt" if e is stt else "local")
         gpu = isinstance(e, OnDemand)
         loaded = e.loaded if gpu else True
         alive = e._info() is not None if isinstance(e, RemoteEngine) and loaded else loaded
@@ -1356,6 +1368,29 @@ def openai_audio_voices():
     return {"voices": [{"id": i, "name": i} for i in ids]}
 
 
+@app.post("/v1/audio/transcriptions")
+def openai_transcriptions(file: UploadFile = File(...), model: str = Form("whisper-1"), language: str = Form("he"),
+                          response_format: str = Form("json"), prompt: str = Form(""), temperature: float = Form(0.0)):
+    """OpenAI-compatible speech-to-text (see stt.py). Any model name is accepted; prompt and
+    temperature are accepted for compatibility and not used. response_format: json or text
+    (verbose_json comes back as json with the duration)."""
+    if stt is None:
+        raise HTTPException(404, "Speech-to-text is off (--stt-model off).")
+    data = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"The file is over {MAX_UPLOAD_BYTES // 2**20} MB.")
+    try:
+        audio = decode_audio(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    text = stt.transcribe(audio, language or None)
+    if response_format == "text":
+        return Response(text, media_type="text/plain; charset=utf-8")
+    if response_format == "verbose_json":
+        return {"task": "transcribe", "language": language, "duration": round(len(audio) / 16000, 2), "text": text}
+    return {"text": text}
+
+
 # --- Wyoming protocol for Home Assistant (see wyoming_service.py)
 
 def wyoming_speak(text: str, voice_id: str) -> tuple[int, Iterator[np.ndarray]]:
@@ -1381,5 +1416,6 @@ if __name__ == "__main__":
         import wyoming_service
 
         allowed = wyoming_service.client_policy(trusted_client, os.environ.get("WYOMING_ALLOW", ""))
-        wyoming_service.start(args.host, args.wyoming_port, list_voices, wyoming_speak, default_voice, allowed)
+        wyoming_service.start(args.host, args.wyoming_port, list_voices, wyoming_speak, default_voice, allowed,
+                              transcribe=stt.transcribe if stt else None, stt_model=args.stt_model)
     uvicorn.run(app, host=args.host, port=args.port)
