@@ -20,6 +20,7 @@ SAMPLE_RATE = 16000  # what Whisper takes
 CHUNK_SAMPLES = 30 * SAMPLE_RATE  # Whisper's window; longer audio is read window by window
 # A window quieter than this (RMS) is skipped: on silence Whisper makes up text ("תודה רבה").
 SILENCE_RMS = 0.003
+MAX_SECONDS = 15 * 60  # longer uploads are cut there
 
 
 class SpeechToText(OnDemand):
@@ -78,29 +79,21 @@ class SpeechToText(OnDemand):
 
 
 def decode_audio(data: bytes) -> np.ndarray:
-    """An uploaded recording (wav, mp3, flac, ogg; m4a/webm need ffmpeg) -> mono float32 at 16 kHz."""
+    """An uploaded recording (wav, mp3, flac, ogg) -> mono float32 at 16 kHz, at most
+    MAX_SECONDS. Only what libsndfile reads: no ffmpeg, which would follow playlists and URLs
+    inside a crafted file."""
     import io
 
     import librosa
     import soundfile as sf
 
     try:
-        audio, rate = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
-        audio = audio.mean(axis=1)
+        with sf.SoundFile(io.BytesIO(data)) as f:
+            if not (1 <= f.channels <= 8 and 1000 <= f.samplerate <= 192000):
+                raise ValueError
+            # frames= caps the decode even when the header lies about the length
+            audio = f.read(frames=int(MAX_SECONDS * f.samplerate), dtype="float32", always_2d=True).mean(axis=1)
+            rate = f.samplerate
     except Exception:
-        import os
-        import tempfile
-
-        fd, path = tempfile.mkstemp()  # librosa's ffmpeg fallback reads from a file
-        try:
-            with os.fdopen(fd, "wb") as f:
-                f.write(data)
-            audio, rate = librosa.load(path, sr=None, mono=True)
-        except Exception:
-            raise ValueError("Couldn't read that audio file (wav, mp3, flac and ogg work).")
-        finally:
-            try:
-                os.unlink(path)
-            except OSError:  # Windows: the decoder that failed may still hold it open
-                pass
+        raise ValueError("Couldn't read that audio file (wav, mp3, flac and ogg work).")
     return librosa.resample(audio, orig_sr=rate, target_sr=SAMPLE_RATE) if rate != SAMPLE_RATE else audio

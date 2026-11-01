@@ -43,6 +43,7 @@ Speak = Callable[[str, str], tuple[int, Iterator[np.ndarray]]]
 TranscribeFn = Callable[[np.ndarray, Optional[str]], str]
 STT_RATE = 16000
 MAX_RECORDING_SECONDS = 120  # longer recordings are cut there (a voice command is a few seconds)
+MAX_CHUNK_BYTES = 1 << 20  # one audio chunk; Home Assistant sends a few KB at a time
 
 
 def client_policy(trusted: Callable[[str], bool], allow: str) -> Callable[[str], bool]:
@@ -102,8 +103,7 @@ class Handler(AsyncEventHandler):
         elif AudioStart.is_type(event.type) and self.transcribe:
             self.recording = []
         elif AudioChunk.is_type(event.type) and self.recording is not None:
-            if sum(map(len, self.recording)) < MAX_RECORDING_SECONDS * STT_RATE * 2:
-                self.recording.append(self.converter.convert(AudioChunk.from_event(event)).audio)
+            self.add_recording_chunk(AudioChunk.from_event(event))
         elif AudioStop.is_type(event.type) and self.recording is not None:
             pcm, self.recording = b"".join(self.recording), None
             await self.send_transcript(pcm)
@@ -129,6 +129,16 @@ class Handler(AsyncEventHandler):
                               attribution=ATTRIBUTION, installed=True, version=None, models=[model])]
         return Info(tts=[program], asr=asr)
 
+    def add_recording_chunk(self, chunk: AudioChunk) -> None:
+        """Converted to 16 kHz mono and kept, up to MAX_RECORDING_SECONDS; a chunk in an odd
+        format or far too large is dropped rather than converted."""
+        if not (8000 <= chunk.rate <= 96000 and chunk.width in (1, 2, 3, 4) and 1 <= chunk.channels <= 8
+                and len(chunk.audio) <= MAX_CHUNK_BYTES):
+            return
+        room = MAX_RECORDING_SECONDS * STT_RATE * 2 - sum(map(len, self.recording))
+        if room > 0:
+            self.recording.append(self.converter.convert(chunk).audio[:room])
+
     async def send_transcript(self, pcm: bytes) -> None:
         audio = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
         try:
@@ -137,7 +147,7 @@ class Handler(AsyncEventHandler):
             print(f"[wyoming] speech-to-text failed: {e}")
             await self.write_event(Error(text=f"Speech-to-text failed: {e}", code="stt-failed").event())
             return
-        print(f"[wyoming] heard {len(audio) / STT_RATE:.1f}s: {text}")
+        print(f"[wyoming] transcribed {len(audio) / STT_RATE:.1f}s of speech ({len(text)} characters)")
         await self.write_event(Transcript(text=text, language=self.language or "he").event())
 
     def voice_id(self, voice) -> str:

@@ -337,7 +337,7 @@ Hebrew assistant and choose this app as both speech-to-text and text-to-speech.
   an RTX 5090.
 - `--stt-model` (or `STT_MODEL`) picks another Whisper model from Hugging Face, e.g.
   `ivrit-ai/whisper-large-v3`; `off` turns speech-to-text off.
-- OpenAI-compatible too: `POST /v1/audio/transcriptions` with a `file` (wav, mp3, flac, ogg),
+- OpenAI-compatible too: `POST /v1/audio/transcriptions` with a `file` (wav, mp3, flac, ogg; up to 15 minutes),
   optional `language` (default `he`) and `response_format` (`json` or `text`).
 
 ## The API key
