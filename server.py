@@ -135,10 +135,31 @@ API_KEY_FILE = DATA_DIR / "api_key.txt"
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
+def docker_gateway() -> str | None:
+    """Inside a Docker container, the bridge's gateway address. Requests that Docker's userland
+    proxy forwards (IPv6, some setups) arrive from it whatever their real origin, so it can't
+    count as the home network."""
+    if not os.path.exists("/.dockerenv"):
+        return None
+    try:
+        for line in open("/proc/net/route").read().splitlines()[1:]:
+            fields = line.split()
+            if fields[1] == "00000000":  # the default route
+                return str(ipaddress.IPv4Address(int(fields[2], 16).to_bytes(4, "little")))
+    except (OSError, IndexError, ValueError):
+        pass
+    return None
+
+
+DOCKER_GATEWAY = docker_gateway()
+
+
 def trusted_client(host: str) -> bool:
     """This PC always; the home network (192.168.x.x, 10.x, 172.16-31.x) unless --lan-needs-key."""
     if host in LOCAL_HOSTS:
         return True
+    if host == DOCKER_GATEWAY:
+        return False
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
@@ -794,12 +815,18 @@ threading.Thread(target=auto_unload_loop, daemon=True, name="auto-unload").start
 
 # --- Long documents: read chapter by chapter in the background into the library
 
+MAX_UPLOAD_BYTES = 50 * 2**20
+
+
 @app.post("/documents")
 def documents_start(file: UploadFile = File(...), settings: str = Form("{}")):
     """TXT/MD/DOCX/PDF -> chapters -> one library item each. settings: the same JSON fields
     as /tts (voice, speed, normalize...). Poll GET /jobs/{id} for progress."""
     try:
-        text = extract_text(file.filename or "", file.file.read())
+        data = file.file.read(MAX_UPLOAD_BYTES + 1)  # capped before parsing, not after
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"The file is over {MAX_UPLOAD_BYTES // 2**20} MB.")
+        text = extract_text(file.filename or "", data)
     except ValueError as e:
         raise HTTPException(400, str(e))
     if not text.strip():
