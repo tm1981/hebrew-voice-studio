@@ -89,11 +89,17 @@ def decode_audio(data: bytes) -> np.ndarray:
 
     try:
         with sf.SoundFile(io.BytesIO(data)) as f:
-            if not (1 <= f.channels <= 8 and 1000 <= f.samplerate <= 192000):
+            if not (1 <= f.channels <= 2 and 8000 <= f.samplerate <= 48000):
                 raise ValueError
-            # frames= caps the decode even when the header lies about the length
-            audio = f.read(frames=int(MAX_SECONDS * f.samplerate), dtype="float32", always_2d=True).mean(axis=1)
-            rate = f.samplerate
+            # Block by block, each mixed to mono, until MAX_SECONDS: memory stays bounded even
+            # when the header lies about the length.
+            rate, left, parts = f.samplerate, MAX_SECONDS * f.samplerate, []
+            for block in f.blocks(blocksize=rate * 10, dtype="float32", always_2d=True):
+                parts.append(block[:left].mean(axis=1))
+                left -= len(parts[-1])
+                if left <= 0:
+                    break
+            audio = np.concatenate(parts) if parts else np.zeros(0, np.float32)
     except Exception:
         raise ValueError("Couldn't read that audio file (wav, mp3, flac and ogg work).")
     return librosa.resample(audio, orig_sr=rate, target_sr=SAMPLE_RATE) if rate != SAMPLE_RATE else audio
