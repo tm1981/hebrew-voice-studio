@@ -22,6 +22,10 @@
 
 FROM ubuntu:24.04
 
+LABEL org.opencontainers.image.source="https://github.com/tm1981/hebrew-voice-studio" \
+      org.opencontainers.image.description="Local multi-engine Hebrew text-to-speech (models download on first use)" \
+      org.opencontainers.image.licenses="MIT"
+
 ARG DEBIAN_FRONTEND=noninteractive
 # ffmpeg: pydub, librosa/audioread, F5's preprocessing. libsndfile1: soundfile (its wheel bundles
 # one too). espeak-ng: LightBlue's English goes through phonemizer, which loads libespeak-ng.

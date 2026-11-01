@@ -175,9 +175,10 @@ The image holds the code and every engine's Python environment (about 9.4 GB to 
 models: the app downloads them into a volume the first time each engine starts.
 
 ```bash
-docker build -t hebrew-voice:dev .
-docker run -d --gpus all -p 8010:8010   -v /srv/voice/models:/app/models   -v /srv/voice/data:/data   hebrew-voice:dev
+docker run -d --gpus all -p 8010:8010   -v /srv/voice/models:/app/models   -v /srv/voice/data:/data   ghcr.io/tm1981/hebrew-voice-studio:latest
 ```
+
+To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder.
 
 - `/app/models` holds the models (about 40 GB with every engine). Map it to a host folder to
   keep downloads across rebuilds, or to reuse a models folder you already have.

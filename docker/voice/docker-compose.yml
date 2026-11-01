@@ -1,6 +1,7 @@
 # Hebrew Voice Studio for a Docker host with an NVIDIA GPU (e.g. RTX 3090).
 #
-# Build the image first (from the repo root):   docker build -t hebrew-voice:dev .
+# The image is published as ghcr.io/tm1981/hebrew-voice-studio (Docker pulls it on deploy).
+# To build it yourself instead: docker build -t hebrew-voice:dev .  (repo root), and set image: below.
 # Portainer: Stacks -> Add stack -> Web editor -> paste this file -> Deploy.
 # Then open http://<docker-host-ip>:8010 for the web UI.
 #
@@ -13,7 +14,7 @@
 
 services:
   hebrew-voice:
-    image: hebrew-voice:dev
+    image: ghcr.io/tm1981/hebrew-voice-studio:latest
     container_name: hebrew-voice
     ports:
       - "8010:8010"
