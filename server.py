@@ -1,7 +1,7 @@
 """Local Hebrew TTS API over several engines: LightBlue, Blue 2.5 and Kokoro (fast, CPU),
 Chatterbox (GPU), OmniVoice, Higgs, QwenTTS-he, Magpie and F5-TTS (GPU workers in their own conda envs, which
 this server starts and stops itself), and optionally Zonos-Hebrew on another machine (its address is set on the web UI's
-Server status screen, or with --zonos-url / ZONOS_URL; off when not set).
+Settings screen, or with --zonos-url / ZONOS_URL; off when not set).
 
 Run:
     conda activate voice
@@ -123,7 +123,7 @@ from documents import MAX_DOCUMENT_CHARS, Jobs, extract_text, split_chapters, zi
 from engines import check_recording
 from library import SENTENCE_GAP, Library, MemoryCache, cache_key, to_rate
 from script import detect_speakers, parse
-from stt import SpeechToText, decode_audio
+from stt import BUILTIN_MODELS, DEFAULT_MODEL as DEFAULT_STT_MODEL, SpeechToText, decode_audio
 from text_prep import Dictionary, prepare
 
 parser = argparse.ArgumentParser()
@@ -137,8 +137,9 @@ parser.add_argument("--zonos-url", default=None,
 parser.add_argument("--lan-needs-key", action="store_true", help="also require the key from the home network")
 parser.add_argument("--wyoming-port", type=int, default=int(os.environ.get("WYOMING_PORT", 10200)),
                     help="Wyoming protocol port for Home Assistant (0 turns it off)")
-parser.add_argument("--stt-model", default=os.environ.get("STT_MODEL", "ivrit-ai/whisper-large-v3-turbo"),
-                    help="Whisper model for speech-to-text (Hugging Face id; \"off\" turns it off)")
+parser.add_argument("--stt-model", default=None,
+                    help="Whisper model for speech-to-text (Hugging Face id; \"off\" turns it off). Without it: "
+                         "the model picked in Settings, else STT_MODEL, else ivrit-ai/whisper-large-v3-turbo")
 args = parser.parse_args()
 
 DEVICE = os.environ.get("TTS_DEVICE", default_device())
@@ -239,7 +240,17 @@ def load_settings() -> dict:
 # Zonos address: --zonos-url, else the one saved from the web UI, else ZONOS_URL; empty = off.
 zonos_url = args.zonos_url if args.zonos_url is not None else load_settings().get("zonos_url", os.environ.get("ZONOS_URL", ""))
 engines = load_engines(DEVICE, args.port, zonos_url)
-stt = None if args.stt_model.strip().lower() in ("", "off", "none") else SpeechToText(DEVICE, args.stt_model.strip())
+# Speech-to-text model: --stt-model, else the one picked in Settings, else STT_MODEL; "off" in
+# --stt-model or STT_MODEL turns speech-to-text off.
+stt_requested = (args.stt_model if args.stt_model is not None else os.environ.get("STT_MODEL", DEFAULT_STT_MODEL)).strip()
+stt_model_fixed = args.stt_model is not None  # then Settings shows the model but can't switch it
+if stt_requested.lower() in ("", "off", "none"):
+    stt = None
+else:
+    saved_stt_model = None if stt_model_fixed else load_settings().get("stt_model")
+    if saved_stt_model not in (*BUILTIN_MODELS, stt_requested):
+        saved_stt_model = None
+    stt = SpeechToText(DEVICE, saved_stt_model or stt_requested)
 
 
 def gpu_parts() -> dict:
@@ -1056,7 +1067,8 @@ def restore_upload(file: UploadFile = File(...)):
             "api_key_changed": key_changed, "skipped": result["skipped"], "errors": errors}
 
 
-RESTORABLE_SETTINGS = {"zonos_url", "auto_unload_minutes", "keep_loaded", "openai_voices", "default_voice", "stt_words"}
+RESTORABLE_SETTINGS = {"zonos_url", "auto_unload_minutes", "keep_loaded", "openai_voices", "default_voice", "stt_words",
+                       "stt_model", "stt_remote_host", "stt_remote_port"}
 
 
 def apply_settings(values: dict) -> None:
@@ -1380,15 +1392,120 @@ def stt_words() -> str:
 
 @app.get("/settings/stt")
 def stt_settings():
-    """Hint words for speech-to-text: names of rooms, devices and people, spelled as Home
-    Assistant knows them, so Whisper writes them that way."""
-    return {"enabled": stt is not None, "model": args.stt_model if stt else "", "words": stt_words()}
+    """Speech-to-text: the built-in model and the ones Settings can switch to (fixed: set with
+    --stt-model), hint words (names of rooms, devices and people, spelled as Home Assistant
+    knows them, so Whisper writes them that way) and the homelab Wyoming server."""
+    models = [{"id": m, "label": label} for m, (_, label) in BUILTIN_MODELS.items()]
+    if stt and stt.model_id not in BUILTIN_MODELS:
+        models.append({"id": stt.model_id, "label": stt.model_id})
+    host, port = stt_remote()
+    return {"enabled": stt is not None, "model": stt.model_id if stt else "", "models": models,
+            "fixed": stt_model_fixed, "words": stt_words(), "remote": {"host": host, "port": port}}
 
 
 @app.put("/settings/stt")
 def stt_settings_set(body: SttSettings):
     save_settings(stt_words=body.words.strip())
     return stt_settings()
+
+
+class SttModel(BaseModel):
+    model: str = Field(max_length=200)
+
+
+@app.put("/settings/stt/model")
+def stt_model_set(body: SttModel):
+    """Switches the built-in Whisper model (Home Assistant's too); it loads on the next request,
+    or now if it's kept loaded."""
+    if stt is None:
+        raise HTTPException(404, "Speech-to-text is off (--stt-model off).")
+    if stt_model_fixed:
+        raise HTTPException(409, "The model is set with --stt-model.")
+    if body.model not in (*BUILTIN_MODELS, stt_requested):
+        raise HTTPException(400, f"Unknown model '{body.model}'.")
+    if body.model != stt.model_id:
+        stt.set_model(body.model)
+        save_settings(stt_model=body.model)
+        if "stt" in keep_loaded:
+            load_in_background(stt)
+    return stt_settings()
+
+
+DEFAULT_REMOTE_PORT = 10300  # wyoming-faster-whisper's
+REMOTE_HOST = re.compile(r"^[A-Za-z0-9.\-]{1,253}$|^[0-9A-Fa-f:]{2,45}$")  # a name, IPv4 or IPv6
+
+
+class SttRemote(BaseModel):
+    host: str = Field("", max_length=255)
+    port: int = Field(DEFAULT_REMOTE_PORT, ge=1, le=65535)
+
+
+def stt_remote() -> tuple[str, int]:
+    """The homelab Wyoming speech-to-text server saved in Settings; host "" = none."""
+    settings = load_settings()
+    port = settings.get("stt_remote_port", DEFAULT_REMOTE_PORT)
+    return str(settings.get("stt_remote_host", "")), port if isinstance(port, int) else DEFAULT_REMOTE_PORT
+
+
+def checked_remote(body: SttRemote) -> str:
+    host = body.host.strip().strip("[]")
+    if host and not REMOTE_HOST.match(host):
+        raise HTTPException(400, "That isn't a host name or IP address.")
+    return host
+
+
+@app.put("/settings/stt/remote")
+def stt_remote_set(body: SttRemote):
+    save_settings(stt_remote_host=checked_remote(body), stt_remote_port=body.port)
+    return stt_settings()
+
+
+@app.post("/settings/stt/remote/test")
+def stt_remote_test(body: SttRemote):
+    """Asks the server what it offers: {"models": [...]}, or 502 with what went wrong."""
+    import wyoming_service
+
+    host = checked_remote(body)
+    if not host:
+        raise HTTPException(400, "Enter the server's host name or IP address.")
+    try:
+        return {"models": wyoming_service.remote_models(host, body.port)}
+    except ValueError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.post("/stt/transcribe")
+def stt_transcribe_upload(file: UploadFile = File(...), engine: str = Form("builtin"), language: str = Form("")):
+    """The Transcribe page: a recording (the page sends 16 kHz WAV) -> {"text", "language",
+    "seconds" (the work), "duration" (the audio)}. engine: builtin (with the saved hint words
+    for Hebrew) or remote (the homelab server in Settings). language "" = detect."""
+    import wyoming_service
+
+    data = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"The file is over {MAX_UPLOAD_BYTES // 2**20} MB.")
+    try:
+        audio = decode_audio(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    language = language.strip().lower()[:12] or None
+    started = time.monotonic()
+    if engine == "remote":
+        host, port = stt_remote()
+        if not host:
+            raise HTTPException(400, "No homelab server is set in Settings.")
+        try:
+            text, found = wyoming_service.remote_transcribe(host, port, audio, language)
+        except ValueError as e:
+            raise HTTPException(502, str(e))
+    elif engine == "builtin":
+        if stt is None:
+            raise HTTPException(404, "Speech-to-text is off (--stt-model off).")
+        text, found = stt.transcribe(audio, language, stt_words() if language == "he" else ""), language
+    else:
+        raise HTTPException(400, f"Unknown engine '{engine}'.")
+    return {"text": text, "language": found, "seconds": round(time.monotonic() - started, 2),
+            "duration": round(len(audio) / 16000, 2)}
 
 
 def stt_transcribe(audio: np.ndarray, language: str | None) -> str:
@@ -1445,5 +1562,6 @@ if __name__ == "__main__":
 
         allowed = wyoming_service.client_policy(trusted_client, os.environ.get("WYOMING_ALLOW", ""))
         wyoming_service.start(args.host, args.wyoming_port, list_voices, wyoming_speak, default_voice, allowed,
-                              transcribe=stt_transcribe if stt else None, stt_model=args.stt_model)
+                              transcribe=stt_transcribe if stt else None,
+                              stt_model=lambda: (stt.model_id, stt.languages))
     uvicorn.run(app, host=args.host, port=args.port)

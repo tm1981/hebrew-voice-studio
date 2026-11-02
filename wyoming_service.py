@@ -5,6 +5,9 @@ Wyoming Protocol, host = this machine, port = 10200 (--wyoming-port). One entry 
 Speech-to-text (Hebrew Whisper, stt.py): Home Assistant sends transcribe, then the recording
 (audio-start / -chunk / -stop) and gets the transcript back.
 
+The same protocol as a client (remote_models, remote_transcribe) reaches a speech-to-text server
+elsewhere, such as faster-whisper on a home server, for the Transcribe page.
+
 Home Assistant gets every voice in the app (as "<engine>/<name>") and reads with any of them.
 It can send the text all at once (synthesize) or as it's being written by a voice assistant
 (synthesize-start / -chunk / -stop); either way audio goes back sentence by sentence, so
@@ -29,6 +32,8 @@ from wyoming.event import Event
 from wyoming.info import AsrModel, AsrProgram, Attribution, Describe, Info, TtsProgram, TtsVoice
 from wyoming.server import AsyncEventHandler, AsyncTcpServer
 from wyoming.tts import Synthesize, SynthesizeChunk, SynthesizeStart, SynthesizeStop, SynthesizeStopped
+
+from stt import BIDI_MARKS
 
 CHUNK_SAMPLES = 2048  # audio goes out in chunks of this many samples
 STREAM_GAP = 0.25  # seconds of silence between parts of a streamed text, as between sentences
@@ -67,7 +72,8 @@ def client_policy(trusted: Callable[[str], bool], allow: str) -> Callable[[str],
 
 class Handler(AsyncEventHandler):
     def __init__(self, reader, writer, voices: Callable[[], list[dict]], speak: Speak, default_voice: Callable[[], str],
-                 allowed: Callable[[str], bool], transcribe: TranscribeFn | None = None, stt_model: str = ""):
+                 allowed: Callable[[str], bool], transcribe: TranscribeFn | None = None,
+                 stt_model: Callable[[], tuple[str, list[str]]] | None = None):
         super().__init__(reader, writer)
         self.voices, self.speak, self.default_voice = voices, speak, default_voice
         self.transcribe, self.stt_model = transcribe, stt_model
@@ -123,8 +129,9 @@ class Handler(AsyncEventHandler):
                              installed=True, version=None, voices=voices, supports_synthesize_streaming=True)
         asr = []
         if self.transcribe:
-            model = AsrModel(name=self.stt_model, description=f"Whisper ({self.stt_model})", attribution=ATTRIBUTION,
-                             installed=True, version=None, languages=["he"])
+            name, languages = self.stt_model()
+            model = AsrModel(name=name, description=f"Whisper ({name})", attribution=ATTRIBUTION,
+                             installed=True, version=None, languages=languages)
             asr = [AsrProgram(name="hebrew-voice-studio-stt", description="Hebrew Voice Studio speech-to-text",
                               attribution=ATTRIBUTION, installed=True, version=None, models=[model])]
         return Info(tts=[program], asr=asr)
@@ -185,10 +192,83 @@ def split_ready(text: str) -> tuple[str, str]:
     return text[:cut], text[cut:]
 
 
+# --- Client: speech-to-text on another Wyoming server, such as wyoming-faster-whisper
+# (lscr.io/linuxserver/faster-whisper, rhasspy/wyoming-whisper) on a home server.
+
+CONNECT_TIMEOUT = 5.0
+REMOTE_TIMEOUT = 300.0  # the whole transcription; a few minutes of audio takes seconds on a GPU
+
+
+async def _read_until(client, wanted, timeout: float) -> Event:
+    """The next event of type wanted; an Error event from the server is raised as ValueError."""
+    async def read():
+        while (event := await client.read_event()) is not None:
+            if Error.is_type(event.type):
+                raise ValueError(f"The server said: {Error.from_event(event).text}")
+            if wanted.is_type(event.type):
+                return event
+        raise ValueError("The server closed the connection.")
+
+    return await asyncio.wait_for(read(), timeout)
+
+
+def _run(host: str, port: int, talk, timeout: float):
+    """Connects to host:port and runs talk(client); connection failures as ValueError messages."""
+    from wyoming.client import AsyncTcpClient
+
+    async def main():
+        client = AsyncTcpClient(host, port)
+        try:
+            await asyncio.wait_for(client.connect(), CONNECT_TIMEOUT)
+        except (OSError, asyncio.TimeoutError) as e:
+            raise ValueError(f"Couldn't connect to {host}:{port} ({e or 'timed out'}).")
+        try:
+            return await talk(client)
+        except asyncio.TimeoutError:
+            raise ValueError(f"No answer from {host}:{port} in {timeout:.0f} s.")
+        finally:
+            await client.disconnect()
+
+    return asyncio.run(main())
+
+
+def remote_models(host: str, port: int) -> list[str]:
+    """The speech-to-text models a Wyoming server offers (its Describe answer)."""
+    async def talk(client):
+        await client.write_event(Describe().event())
+        info = Info.from_event(await _read_until(client, Info, CONNECT_TIMEOUT * 2))
+        return [m.name for program in info.asr for m in program.models]
+
+    models = _run(host, port, talk, CONNECT_TIMEOUT * 2)
+    if not models:
+        raise ValueError(f"{host}:{port} answers, but offers no speech-to-text.")
+    return models
+
+
+def remote_transcribe(host: str, port: int, audio: np.ndarray, language: str | None) -> tuple[str, str | None]:
+    """Mono float32 audio at 16 kHz -> (text, language the server reports, if it does).
+    language None: the server's own setting (wyoming-faster-whisper: WHISPER_LANG, auto by default)."""
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    fmt = {"rate": STT_RATE, "width": 2, "channels": 1}
+
+    async def talk(client):
+        await client.write_event(Transcribe(language=language).event())
+        await client.write_event(AudioStart(**fmt).event())
+        step = CHUNK_SAMPLES * 2
+        for start in range(0, len(pcm), step):
+            await client.write_event(AudioChunk(audio=pcm[start:start + step], **fmt).event())
+        await client.write_event(AudioStop().event())
+        transcript = Transcript.from_event(await _read_until(client, Transcript, REMOTE_TIMEOUT))
+        return BIDI_MARKS.sub("", transcript.text).strip(), transcript.language
+
+    return _run(host, port, talk, REMOTE_TIMEOUT)
+
+
 def start(host: str, port: int, voices: Callable[[], list[dict]], speak: Speak, default_voice: Callable[[], str],
-          allowed: Callable[[str], bool], transcribe: TranscribeFn | None = None, stt_model: str = "") -> None:
+          allowed: Callable[[str], bool], transcribe: TranscribeFn | None = None,
+          stt_model: Callable[[], tuple[str, list[str]]] | None = None) -> None:
     """Serves Wyoming on host:port from a background thread; allowed(ip) decides who may connect.
-    transcribe: speech-to-text, offered too when given."""
+    transcribe: speech-to-text, offered too when given; stt_model() -> (model name, languages)."""
 
     def run():
         server = AsyncTcpServer(host, port)

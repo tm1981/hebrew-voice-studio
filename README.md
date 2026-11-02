@@ -160,7 +160,7 @@ install `torchcodec` in this env: it needs FFmpeg DLLs and breaks Whisper withou
 Zonos runs in Docker on a machine with an NVIDIA GPU (an RTX 3090 here).
 `docker\zonos-hebrew\docker-compose.yml` has the stack and instructions for Portainer.
 
-Then turn it on in the web UI: **Server status → Zonos-Hebrew**, enter its address (for
+Then turn it on in the web UI: **Settings → Zonos-Hebrew**, enter its address (for
 example `http://<docker-host>:7860/`) and press **Connect**. It connects right away, no
 restart needed, and the address is saved in `settings.json` for the next start. **Turn off**
 drops it again.
@@ -191,7 +191,7 @@ To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder
 - Port 10200 is the Wyoming port for [Home Assistant](#home-assistant).
 - In Docker, clients that reach the app through Docker's own gateway address (for example
   from the Docker host itself) always need the API key, since that address can stand for
-  anyone. The key is in the log at startup and under **Server status → API key**, where it can
+  anyone. The key is in the log at startup and under **Settings → API key**, where it can
   be changed.
 - For Portainer or `docker compose`, use [`docker/voice/docker-compose.yml`](docker/voice/docker-compose.yml).
 - The host needs the NVIDIA driver and the NVIDIA Container Toolkit. The image is built for
@@ -257,7 +257,11 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
   (upload or record); each can be played, trimmed by dragging, cut to the speech, and leveled
   before saving. The new voice appears in every engine that can clone.
 - **Pronunciation:** words an engine says wrong, with how to read them; applies to every engine.
-- **Server status:** which engines run, and GPU memory. **Unload** frees one GPU engine's
+- **Transcribe:** upload an audio or video file, or record from the microphone, and get the
+  text back, with Copy and Download .txt. It runs on the built-in speech-to-text or on a
+  Whisper server elsewhere on the network (see [Speech-to-text](#speech-to-text)); any
+  language, automatic by default. The browser decodes the audio, so m4a, webm and mp4 work too.
+- **Settings:** which engines run, and GPU memory. **Unload** frees one GPU engine's
   memory (Chatterbox, OmniVoice, Higgs, QwenTTS-he, Magpie, F5-TTS), **Free GPU memory** frees all of them,
   and engines unused for a while (30 minutes by default; can be changed or turned off) unload
   by themselves. An unloaded engine stays in the voice list and loads again on its next
@@ -292,7 +296,7 @@ curl http://localhost:8010/options
 
 Voices are named `<engine>/<voice>`, for example `lightblue/noa`, `kokoro/emma_shaul` or
 `omnivoice/<your voice>`. OpenAI voice names (alloy, nova, shimmer, onyx...) map to voices
-here; which voice each one plays can be changed under **Server status → Home Assistant and
+here; which voice each one plays can be changed under **Settings → Home Assistant and
 other apps**. With `"response_format": "pcm"` or `"wav"` the OpenAI endpoint streams the audio
 sentence by sentence; the other formats come as one finished file. The full list of
 endpoints is at the top of `server.py`, and interactive docs are at http://localhost:8010/docs.
@@ -305,13 +309,13 @@ local voices and speech-to-text:
 1. In Home Assistant: **Settings → Devices & services → Add integration → Wyoming Protocol**.
 2. Host: the address of the machine running this app; port: `10200`.
 3. Every voice appears in Home Assistant (in the TTS options of automations and of voice
-   assistants). Without a choice there, the **default voice** set under **Server status** is
+   assistants). Without a choice there, the **default voice** set under **Settings** is
    used.
 
 Audio goes back sentence by sentence, and a voice assistant's reply is read while it's still
 being written. For quick announcements:
 
-- Tick **Keep loaded** for the GPU engine you use (Server status): it loads when the server
+- Tick **Keep loaded** for the GPU engine you use (Settings): it loads when the server
   starts and isn't unloaded for being idle, so announcements don't wait 10-60 seconds for a
   model. The CPU engines (LightBlue, Blue 2.5, Kokoro) are always ready.
 - Wyoming has no API key, so it lets in only the clients the HTTP API lets in without one:
@@ -332,12 +336,21 @@ Hebrew assistant and choose this app as both speech-to-text and text-to-speech.
 - The model is [ivrit-ai/whisper-large-v3-turbo](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo),
   Whisper fine-tuned on Hebrew (Apache-2.0). It downloads (about 1.6 GB) on first use and takes
   about 2 GB of GPU memory.
-- It shows up in **Server status** with the engines: tick **Keep loaded** so the first command
+- It shows up in **Settings** with the engines: tick **Keep loaded** so the first command
   doesn't wait a few seconds for it to load. Once loaded, a short command takes about 0.1 s on
   an RTX 5090.
-- `--stt-model` (or `STT_MODEL`) picks another Whisper model from Hugging Face, e.g.
-  `ivrit-ai/whisper-large-v3`; `off` turns speech-to-text off.
-- **Words for speech-to-text** (Server status → Home Assistant): names of rooms, devices and
+- **Settings → Speech-to-text → Built-in model** switches to OpenAI's
+  [whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) (MIT, same
+  size) for other languages, for Home Assistant too. `--stt-model` picks any Whisper model from
+  Hugging Face instead (then it can't be switched in Settings); `STT_MODEL` sets the model used
+  until one is picked in Settings; `off` in either turns speech-to-text off.
+- **Settings → Speech-to-text → Homelab Whisper server:** the address of a Wyoming
+  speech-to-text server, such as the `lscr.io/linuxserver/faster-whisper` container Home
+  Assistant uses (port 10300), for the Transcribe page. **Test connection** shows the model it
+  runs, which is set in its own compose file (`WHISPER_MODEL`). An ivrit-ai model there hears
+  every recording as Hebrew; it writes English correctly with Hebrew or automatic as the
+  language, but forced to English it writes English speech in Hebrew.
+- **Words for speech-to-text** (Settings → Home Assistant): names of rooms, devices and
   people, spelled the way Home Assistant knows them (`סלון, נאנוליף, יואב`). Whisper then
   writes them that way (נאנוליף, not ננוליף), so the command matches.
 - Recordings without speech (a false wake word, room noise) come back empty instead of as
@@ -349,7 +362,7 @@ Hebrew assistant and choose this app as both speech-to-text and text-to-speech.
 
 ## The API key
 
-**Server status → API key** shows the key, copies it, sets your own or generates a new one
+**Settings → API key** shows the key, copies it, sets your own or generates a new one
 (saved to `api_key.txt` in the data folder, and used at once). A key passed with `--api-key` or
 `TTS_API_KEY` is shown but can only be changed there.
 
@@ -361,7 +374,7 @@ server through your browser. To skip the key under another name, set
 
 ## Backup and restore
 
-**Server status → Backup** downloads one zip with your recorded voices, presets, settings,
+**Settings → Backup** downloads one zip with your recorded voices, presets, settings,
 pronunciations and the API key, and optionally the whole library of readings. **Restore** adds a
 backup to what's there: voices and readings with the same name are replaced, presets,
 pronunciations and settings are merged, and everything applies without a restart. This is the
@@ -397,9 +410,9 @@ sits inside a volume. The backup holds the API key, so keep it private. From scr
   if you start it some other way, add `-X utf8` (`python -X utf8 server.py`).
 - **Port already in use:** use `--port`. On this PC, 8000 belongs to a Windows service.
 - **An engine is missing from the voice list:** look for `[WARN]` lines in the console; the
-  **Server status** screen shows which engines are running.
+  **Settings** screen shows which engines are running.
 - **Out of GPU memory:** another program, or a second copy of this server, is using the GPU.
-  Use **Free GPU memory** on the Server status screen, or a shorter auto-unload time.
+  Use **Free GPU memory** on the Settings screen, or a shorter auto-unload time.
 - **`pkg_resources` not found:** `pip install "setuptools<81"` in the `voice` env.
 - **CUDA errors on an RTX 50xx:** torch must be the `cu128` build (see Install, step 1).
 - **The web UI keeps asking for an API key:** you're coming from outside the home network;

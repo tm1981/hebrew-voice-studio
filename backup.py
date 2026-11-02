@@ -1,5 +1,5 @@
 """Backup and restore of the user's data (DATA_DIR) as one zip file, made and restored from the
-web UI (Server status), since in Docker the data sits inside a volume:
+web UI (Settings), since in Docker the data sits inside a volume:
 
     hebrew-voice-backup.json   {"version", "created", "library"}
     settings.json presets.json pronunciations.json api_key.txt

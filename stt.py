@@ -1,10 +1,11 @@
 """Speech-to-text, for Home Assistant's voice assistant (over Wyoming, see wyoming_service.py)
 and POST /v1/audio/transcriptions. The default model is ivrit-ai's Hebrew fine-tune of Whisper
-large-v3-turbo (Apache-2.0, about 1.6 GB, downloaded into models/hf on first use); --stt-model
-or STT_MODEL picks another Whisper model from Hugging Face, "off" turns it off.
+large-v3-turbo (Apache-2.0, about 1.6 GB, downloaded into models/hf on first use). Settings in the
+web UI switch to OpenAI's all-language large-v3-turbo (MIT, same size); --stt-model or STT_MODEL
+picks any Whisper model from Hugging Face, "off" turns it off.
 
 Like the GPU engines it loads on its first request, unloads after the idle time set in the web
-UI, and can be kept loaded (Server status), so a voice command doesn't wait for it to load.
+UI, and can be kept loaded (Settings), so a voice command doesn't wait for it to load.
 
 On audio without speech (a false wake word, room noise) Whisper makes up text, usually
 "תודה רבה", and this fine-tune never reports "no speech", so windows are checked with Silero VAD
@@ -23,6 +24,15 @@ from engines import OnDemand
 
 DEFAULT_MODEL = "ivrit-ai/whisper-large-v3-turbo"
 DEFAULT_REVISION = "f33172a8c3c6efbc040a7200e00835257cac0447"
+# The models Settings offers: id -> (languages, as told to Home Assistant; label).
+BUILTIN_MODELS = {
+    DEFAULT_MODEL: (["he"], "Hebrew: ivrit-ai Whisper large-v3 turbo"),
+    "openai/whisper-large-v3-turbo": (
+        "af am ar as az ba be bg bn bo br bs ca cs cy da de el en es et eu fa fi fo fr gl gu ha haw he hi hr ht "
+        "hu hy id is it ja jw ka kk km kn ko la lb ln lo lt lv mg mi mk ml mn mr ms mt my ne nl nn no oc pa pl "
+        "ps pt ro ru sa sd si sk sl sn so sq sr su sv sw ta te tg th tk tl tr tt uk ur uz vi yi yo yue zh".split(),
+        "All languages: OpenAI Whisper large-v3 turbo"),
+}
 SAMPLE_RATE = 16000  # what Whisper takes
 CHUNK_SAMPLES = 30 * SAMPLE_RATE  # Whisper's window; longer audio is read window by window
 SILENCE_RMS = 0.003  # a window quieter than this (RMS) is skipped without asking the VAD
@@ -43,10 +53,21 @@ class SpeechToText(OnDemand):
 
     def __init__(self, device: str, model: str = DEFAULT_MODEL):
         self.device = device
-        self.model_id = model
-        self.revision = DEFAULT_REVISION if model == DEFAULT_MODEL else None
         self.lock = threading.RLock()
-        self.voices = {}  # listed with the engines in Server status, which count voices
+        self.set_model(model)
+        self.voices = {}  # listed with the engines in Settings, which count voices
+
+    def set_model(self, model: str) -> None:
+        """Switches to another Whisper model: the current one is unloaded (after a running
+        transcription), the new one loads on the next request."""
+        with self.lock:
+            self.unload()
+            self.model_id = model
+            self.revision = DEFAULT_REVISION if model == DEFAULT_MODEL else None
+
+    @property
+    def languages(self) -> list[str]:
+        return BUILTIN_MODELS.get(self.model_id, (["he"],))[0]
 
     def _load(self) -> None:
         import torch

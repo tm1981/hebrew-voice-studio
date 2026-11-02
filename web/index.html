@@ -107,6 +107,7 @@
   .field > label, .label { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 12.5px; font-weight: 500; }
   .field output { color: var(--ink); font-variant-numeric: tabular-nums; direction: ltr; }
   .hint { margin: 0; font-size: 12px; color: var(--faint); }
+  .error-text { color: var(--error); }
   select, input[type="text"], input[type="search"], input[type="number"] {
     width: 100%; min-width: 0; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 8px;
     padding: 8px 11px; color: var(--ink);
@@ -316,6 +317,8 @@
   <symbol id="i-voices" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
   <symbol id="i-words" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 19V5M9 8h6"/></symbol>
   <symbol id="i-status" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01" stroke-width="2.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-transcribe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9v6M6.5 6v12M10 10v4M14 7h7M14 12h7M14 17h5"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
@@ -357,7 +360,8 @@
     <button type="button" data-go="documents"><svg><use href="#i-doc"/></svg><span data-i18n="nav.documents"></span></button>
     <button type="button" data-go="voices"><svg><use href="#i-voices"/></svg><span data-i18n="nav.voices"></span></button>
     <button type="button" data-go="words"><svg><use href="#i-words"/></svg><span data-i18n="nav.words"></span></button>
-    <button type="button" data-go="status" class="bottom"><svg><use href="#i-status"/></svg><span data-i18n="nav.status"></span></button>
+    <button type="button" data-go="transcribe"><svg><use href="#i-transcribe"/></svg><span data-i18n="nav.transcribe"></span></button>
+    <button type="button" data-go="status" class="bottom"><svg><use href="#i-settings"/></svg><span data-i18n="nav.status"></span></button>
   </nav>
 
   <main id="main">
@@ -495,7 +499,47 @@
       </div>
     </section>
 
-    <!-- Server status -->
+    <!-- Transcribe -->
+    <section class="view" data-view="transcribe" hidden>
+      <div class="view-head"><div><h1 data-i18n="nav.transcribe"></h1><p data-i18n="trHelp"></p></div></div>
+      <div class="panel form" style="max-width:720px">
+        <div class="row" style="flex-wrap:wrap;gap:16px;align-items:flex-end">
+          <div class="field">
+            <span class="label" data-i18n="trEngine"></span>
+            <div class="seg" id="trEngine">
+              <button type="button" data-engine="remote" aria-pressed="false" data-i18n="trRemote"></button>
+              <button type="button" data-engine="builtin" aria-pressed="false" data-i18n="trBuiltin"></button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="trLang" data-i18n="trLang"></label>
+            <select id="trLang" style="width:auto"></select>
+          </div>
+        </div>
+        <p class="hint" id="trEngineNote"></p>
+        <label class="file-pick"><svg><use href="#i-upload"/></svg><span class="names" id="trName" data-i18n="trPick"></span>
+          <input type="file" id="trFile" accept="audio/*,video/*"></label>
+        <div class="recorder">
+          <button type="button" class="btn" id="trRecord"><svg><use href="#i-mic"/></svg><span id="trRecordLabel" data-i18n="record"></span></button>
+          <div class="meter" aria-hidden="true"><div id="trMeter"></div></div>
+          <span id="trTime" class="muted small"></span>
+        </div>
+        <p class="hint" id="trNote" hidden></p>
+        <div class="row"><button type="button" class="btn primary" id="trStart" data-i18n="trStart"></button></div>
+        <div id="trResult" style="display:flex;flex-direction:column;gap:14px" hidden>
+          <div class="divider"></div>
+          <textarea id="trText" class="box" rows="8" dir="auto" aria-label="Text"></textarea>
+          <div class="row" style="flex-wrap:wrap">
+            <button type="button" class="btn" id="trCopy" data-i18n="trCopy"></button>
+            <button type="button" class="btn" id="trDownload"><svg><use href="#i-download"/></svg><span data-i18n="trDownload"></span></button>
+            <span class="spacer"></span>
+            <span class="muted small" id="trMeta"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings (server status and options) -->
     <section class="view" data-view="status" hidden>
       <div class="view-head"><div><h1 data-i18n="nav.status"></h1></div><span class="spacer"></span><button type="button" class="btn" id="statusRefresh" data-i18n="refresh"></button></div>
       <div id="statusBody"></div>
@@ -512,6 +556,27 @@
             <option value="60" data-i18n="auto60"></option>
             <option value="120" data-i18n="auto120"></option>
           </select>
+        </div>
+      </div>
+      <div class="panel form" id="sttPanel" style="max-width:720px;margin-top:16px">
+        <h2 data-i18n="sttTitle"></h2>
+        <div class="field" id="sttModelBox">
+          <label for="sttModel" data-i18n="sttModelLabel"></label>
+          <select id="sttModel"></select>
+          <p class="hint" id="sttModelHelp"></p>
+        </div>
+        <div class="field" style="margin-top:10px">
+          <span class="label" data-i18n="sttRemoteLabel"></span>
+          <p class="muted small" data-i18n="sttRemoteHelp" style="margin:0"></p>
+          <div class="row">
+            <input type="text" id="sttHost" dir="ltr" maxlength="253" placeholder="192.168.1.20" spellcheck="false" autocomplete="off" data-i18n-title="sttHost">
+            <input type="number" id="sttPort" dir="ltr" min="1" max="65535" value="10300" style="width:110px;flex:none" data-i18n-title="sttPort">
+          </div>
+          <div class="row">
+            <button type="button" class="btn" id="sttTest" data-i18n="sttTest"></button>
+            <button type="button" class="btn primary" id="sttRemoteSave" data-i18n="sttRemoteSave"></button>
+          </div>
+          <p class="small" id="sttRemoteState" style="margin:0"></p>
         </div>
       </div>
       <div class="panel form" id="haPanel" style="max-width:720px;margin-top:16px">
@@ -599,7 +664,7 @@ const STR = {
     title: "Hebrew Voice Studio",
     connecting: "Connecting…", ready: "Ready · {gpu}", serverDown: "Server unavailable",
     "nav.read": "Read", "nav.library": "Library", "nav.documents": "Long documents", "nav.voices": "Voices",
-    "nav.words": "Pronunciation", "nav.status": "Server status",
+    "nav.words": "Pronunciation", "nav.transcribe": "Transcribe", "nav.status": "Settings",
     "tab.text": "Text", "tab.niqqud": "With niqqud", compare: "Compare all engines",
     placeholder: "Type or paste Hebrew text here",
     hint: "[pause 2] adds a 2-second pause. Turn on Dialogue for lines like “Noa: hello”.",
@@ -712,6 +777,28 @@ const STR = {
     sttWordsLabel: "Words for speech-to-text",
     sttWordsHelp: "Names of rooms, devices and people, spelled the way Home Assistant knows them, separated by commas. Speech-to-text then writes them that way, so commands match.",
     sttWordsSave: "Save words", sttWordsSaved: "Words saved.",
+    sttTitle: "Speech-to-text",
+    sttModelLabel: "Built-in model",
+    sttModelHelp: "Home Assistant uses this model too. A model you haven't used before downloads on its first use (about 1.6 GB).",
+    sttModelFixed: "Set when the server was started (--stt-model), so it can't be switched here.",
+    sttModelSaved: "Speech-to-text now uses {name}.",
+    sttRemoteLabel: "Homelab Whisper server (Wyoming)",
+    sttRemoteHelp: "A faster-whisper container, as used by Home Assistant (port 10300). The model it runs is set in its Docker compose file (WHISPER_MODEL).",
+    sttHost: "Host name or IP address", sttPort: "Port",
+    sttTest: "Test connection", sttRemoteSave: "Save server", sttRemoteSaved: "Server saved.",
+    sttTesting: "Connecting…", sttConnected: "Connected, running {models}.",
+    trHelp: "Upload or record audio and get the text back. Any language; recordings of a few minutes work best.",
+    trEngine: "Speech-to-text", trRemote: "Homelab server", trBuiltin: "Built-in",
+    trLang: "Language", trAuto: "Detect automatically",
+    trNoRemote: "No homelab server is set yet. Add it in Settings.",
+    trNoBuiltin: "Built-in speech-to-text is off on this server.",
+    trRemoteNote: "Runs on {host}:{port}. With an ivrit-ai model there, choose Hebrew or automatic even for English: that model hears every recording as Hebrew, and set to English it writes English speech in Hebrew.", trBuiltinNote: "Runs here, with {model}.",
+    trBuiltinHebrew: "This model is tuned for Hebrew; for other languages, switch to the all-language model in Settings.",
+    trPick: "Choose an audio or video file", trStart: "Transcribe",
+    trNeedAudio: "Choose a file or record first.", trUnreadable: "The browser couldn't read this file as audio.",
+    trWorking: "Transcribing {s} of audio…", trEmpty: "No speech was found in the recording.",
+    trCopy: "Copy", trCopied: "Text copied.", trDownload: "Download .txt",
+    trMeta: "{d} of audio, took {s}", trDetected: "language: {lang}", trRecording: "Recording ({s})",
     keyTitle: "API key",
     keyHelp: "Apps and devices outside the home network send this key. Changing it is immediate: apps with the old key stop working until you give them the new one.",
     keyFixed: "This key is set when the server starts (--api-key or TTS_API_KEY), so change it there.",
@@ -747,7 +834,7 @@ const STR = {
     title: "סטודיו קול",
     connecting: "מתחבר לשרת…", ready: "מוכן · {gpu}", serverDown: "השרת לא זמין",
     "nav.read": "הקראה", "nav.library": "ספרייה", "nav.documents": "מסמכים ארוכים", "nav.voices": "קולות",
-    "nav.words": "מילון הגייה", "nav.status": "מצב השרת",
+    "nav.words": "מילון הגייה", "nav.transcribe": "תמלול", "nav.status": "הגדרות",
     "tab.text": "טקסט", "tab.niqqud": "עם ניקוד", compare: "השוואה בין כל המנועים",
     placeholder: "כתבו או הדביקו כאן טקסט בעברית",
     hint: "[הפסקה 2] מוסיף הפסקה של שתי שניות. הפעילו דיאלוג לשורות כמו \"נועה: שלום\".",
@@ -860,6 +947,28 @@ const STR = {
     sttWordsLabel: "מילים לזיהוי הדיבור",
     sttWordsHelp: "שמות של חדרים, מכשירים ואנשים, בכתיב שבו Home Assistant מכיר אותם, מופרדים בפסיקים. זיהוי הדיבור יכתוב אותם כך, והפקודות יזוהו.",
     sttWordsSave: "שמירת המילים", sttWordsSaved: "המילים נשמרו.",
+    sttTitle: "זיהוי דיבור",
+    sttModelLabel: "מודל מובנה",
+    sttModelHelp: "גם Home Assistant משתמש במודל הזה. מודל שלא היה בשימוש יורד בפעם הראשונה (כ־1.6 GB).",
+    sttModelFixed: "נקבע בהפעלת השרת (‎--stt-model‎), ולכן אי אפשר להחליף אותו כאן.",
+    sttModelSaved: "זיהוי הדיבור עובד עכשיו עם {name}.",
+    sttRemoteLabel: "שרת Whisper ביתי (Wyoming)",
+    sttRemoteHelp: "קונטיינר faster-whisper, כמו זה של Home Assistant (פורט 10300). המודל שלו נקבע בקובץ ה־Docker compose (WHISPER_MODEL).",
+    sttHost: "שם מחשב או כתובת IP", sttPort: "פורט",
+    sttTest: "בדיקת חיבור", sttRemoteSave: "שמירת השרת", sttRemoteSaved: "השרת נשמר.",
+    sttTesting: "מתחבר…", sttConnected: "מחובר, המודל: {models}.",
+    trHelp: "העלו או הקליטו שמע וקבלו את הטקסט. כל שפה; הקלטות של כמה דקות עובדות הכי טוב.",
+    trEngine: "זיהוי דיבור", trRemote: "שרת ביתי", trBuiltin: "מובנה",
+    trLang: "שפה", trAuto: "זיהוי אוטומטי",
+    trNoRemote: "עדיין לא הוגדר שרת ביתי. מוסיפים אותו בהגדרות.",
+    trNoBuiltin: "זיהוי הדיבור המובנה כבוי בשרת הזה.",
+    trRemoteNote: "רץ על {host}:{port}. אם השרת מריץ מודל של ivrit-ai, בחרו עברית או זיהוי אוטומטי גם לאנגלית: המודל הזה שומע כל הקלטה כעברית, וכשבוחרים אנגלית הוא כותב דיבור באנגלית באותיות עבריות.", trBuiltinNote: "רץ כאן, עם {model}.",
+    trBuiltinHebrew: "המודל הזה מכוון לעברית; לשפות אחרות, עברו למודל לכל השפות בהגדרות.",
+    trPick: "בחירת קובץ שמע או וידאו", trStart: "תמלול",
+    trNeedAudio: "קודם בוחרים קובץ או מקליטים.", trUnreadable: "הדפדפן לא הצליח לקרוא את הקובץ כשמע.",
+    trWorking: "מתמלל {s} של שמע…", trEmpty: "לא נמצא דיבור בהקלטה.",
+    trCopy: "העתקה", trCopied: "הטקסט הועתק.", trDownload: "הורדה כ־txt",
+    trMeta: "{d} של שמע, לקח {s}", trDetected: "שפה: {lang}", trRecording: "הקלטה ({s})",
     keyTitle: "מפתח API",
     keyHelp: "אפליקציות ומכשירים מחוץ לרשת הביתית שולחים את המפתח הזה. שינוי נכנס לתוקף מיד: אפליקציות עם המפתח הישן יפסיקו לעבוד עד שתזינו בהן את החדש.",
     keyFixed: "המפתח נקבע בהפעלת השרת (‎--api-key או TTS_API_KEY), ולכן יש לשנות אותו שם.",
@@ -922,7 +1031,7 @@ function applyLanguage() {
   // Everything built from data gets rebuilt in the new language.
   renderHealth(); updateCount(); renderPresets(presets, $("preset").value);
   if (voices.length) renderVoices(voices); else renderVoiceList();
-  renderHistory(); renderLexicon(lexicon); renderStatus(); renderZonos(); renderJob(); renderClips(); updateDocUses();
+  renderHistory(); renderLexicon(lexicon); renderStatus(); renderZonos(); renderJob(); renderClips(); updateDocUses(); renderSttSettings(); renderTranscribe();
   if (current) { renderSentences(current.meta); updateNow(); }
   else updateNow();
   if (!niqqudEl.hidden) { niqqudFor = null; showNiqqud(true); }
@@ -973,11 +1082,12 @@ function go(view) {
   storage.set("kol-view", view);
   if (view === "status") { loadStatus(); loadZonos(); loadVoiceSettings(); loadSttSettings(); loadApiKey(); }
   if (view === "documents") updateDocUses();
+  if (view === "transcribe") loadTranscribe();
   $("main").scrollTop = 0;
 }
 document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => go(b.dataset.go)));
 
-// ---------- Server status ----------
+// ---------- Settings: server status ----------
 function renderHealth() {
   if (health === null) { $("device").textContent = t("connecting"); return; }
   $("dot").className = "dot " + (health ? "ok" : "down");
@@ -1085,6 +1195,7 @@ async function loadSttSettings() {
   try { data = await (await api("/settings/stt")).json(); } catch { }
   $("sttWordsBox").hidden = !data?.enabled;
   if (data) $("sttWords").value = data.words;
+  sttInfo = data; renderSttSettings();
 }
 $("sttWordsSave").addEventListener("click", async () => {
   try {
@@ -1094,6 +1205,162 @@ $("sttWordsSave").addEventListener("click", async () => {
     $("sttWords").value = data.words;
     setStatus(t("sttWordsSaved"));
   } catch (e) { setStatus(errorText(e), true); }
+});
+
+// Speech-to-text settings: the built-in model, and a homelab Wyoming server (faster-whisper).
+let sttInfo = null;
+function renderSttSettings() {
+  const d = sttInfo;
+  $("sttPanel").hidden = !d;
+  if (!d) return;
+  $("sttModelBox").hidden = !d.enabled;
+  $("sttModel").innerHTML = d.models.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label)}</option>`).join("");
+  $("sttModel").value = d.model;
+  $("sttModel").disabled = d.fixed;
+  $("sttModelHelp").textContent = d.fixed ? t("sttModelFixed") : t("sttModelHelp");
+  if (document.activeElement !== $("sttHost")) $("sttHost").value = d.remote.host;
+  if (document.activeElement !== $("sttPort")) $("sttPort").value = d.remote.port;
+}
+const sttLabel = (id) => sttInfo?.models.find(m => m.id === id)?.label || id;
+$("sttModel").addEventListener("change", async () => {
+  try {
+    const r = await postJSON("/settings/stt/model", { model: $("sttModel").value }, "PUT");
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    sttInfo = data; renderSttSettings();
+    setStatus(t("sttModelSaved", { name: sttLabel(data.model) }));
+  } catch (e) { setStatus(errorText(e), true); renderSttSettings(); }
+});
+const sttRemoteBody = () => ({ host: $("sttHost").value.trim(), port: Number($("sttPort").value) || 10300 });
+$("sttTest").addEventListener("click", async () => {
+  const state = $("sttRemoteState");
+  state.className = "small muted"; state.textContent = t("sttTesting");
+  try {
+    const r = await postJSON("/settings/stt/remote/test", sttRemoteBody());
+    const data = await r.json();
+    if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : t("serverError", { code: r.status }));
+    state.className = "small"; state.textContent = "✓ " + t("sttConnected", { models: data.models.join(", ") });
+  } catch (e) { state.className = "small error-text"; state.textContent = errorText(e); }
+});
+$("sttRemoteSave").addEventListener("click", async () => {
+  try {
+    const r = await postJSON("/settings/stt/remote", sttRemoteBody(), "PUT");
+    const data = await r.json();
+    if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : t("serverError", { code: r.status }));
+    sttInfo = data; renderSttSettings(); renderTranscribe();
+    setStatus(t("sttRemoteSaved"));
+    if (data.remote.host) $("sttTest").click();
+  } catch (e) { setStatus(errorText(e), true); }
+});
+
+// ---------- Transcribe: a file or a recording -> text, on the homelab server or built in ----------
+// The browser decodes the audio (so m4a, webm, mp4 and the microphone's own format all work)
+// and sends it as 16 kHz mono WAV, which is what Whisper takes anyway.
+const TR_LANGS = ["he", "en", "ar", "ru", "fr", "es", "de", "it", "pt", "uk", "am", "yi", "tr", "zh", "ja"];
+let trAudio = null, trEngine = storage.get("kol-tr-engine") || "", trRecorder = null, trBusy = false;
+const langName = (code) => { try { return new Intl.DisplayNames([lang], { type: "language" }).of(code); } catch { return code; } };
+function renderTranscribe() {
+  const sel = $("trLang"), chosen = sel.value || storage.get("kol-tr-lang") || "";
+  sel.innerHTML = `<option value="">${escapeHtml(t("trAuto"))}</option>` +
+    TR_LANGS.map(c => `<option value="${c}">${escapeHtml(langName(c))}</option>`).join("");
+  sel.value = chosen;
+  const remote = sttInfo?.remote.host, builtin = sttInfo?.enabled;
+  if (sttInfo && (!trEngine || (trEngine === "remote" && !remote && builtin))) trEngine = remote ? "remote" : "builtin";
+  document.querySelectorAll("#trEngine button").forEach(b => b.setAttribute("aria-pressed", b.dataset.engine === trEngine));
+  const note = trEngine === "remote"
+    ? (remote ? t("trRemoteNote", { host: sttInfo.remote.host, port: sttInfo.remote.port }) : t("trNoRemote"))
+    : !sttInfo ? "" : !builtin ? t("trNoBuiltin")
+    : t("trBuiltinNote", { model: sttLabel(sttInfo.model) }) + (sttInfo.model.startsWith("ivrit-ai/") && sel.value !== "he" ? " " + t("trBuiltinHebrew") : "");
+  $("trEngineNote").textContent = note;
+  $("trStart").disabled = trBusy;
+}
+async function loadTranscribe() {
+  try { sttInfo = await (await api("/settings/stt")).json(); } catch { }
+  renderTranscribe();
+}
+document.querySelectorAll("#trEngine button").forEach(b => b.addEventListener("click", () => {
+  trEngine = b.dataset.engine; storage.set("kol-tr-engine", trEngine); renderTranscribe();
+}));
+$("trLang").addEventListener("change", () => { storage.set("kol-tr-lang", $("trLang").value); renderTranscribe(); });
+$("trFile").addEventListener("change", async () => {
+  const f = $("trFile").files[0];
+  if (!f) return;
+  try {
+    trAudio = await audioCtx().decodeAudioData(await f.arrayBuffer());
+    $("trName").textContent = `${f.name} (${secs(trAudio.duration)})`;
+  } catch { trAudio = null; $("trName").textContent = t("trPick"); setStatus(`${f.name}: ${t("trUnreadable")}`, true); }
+  $("trFile").value = "";
+});
+$("trRecord").addEventListener("click", async () => {
+  if (trRecorder) { trRecorder.stop(); return; }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    $("trNote").hidden = false; $("trNote").textContent = t("micBlocked"); return;
+  }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { setStatus(e.message, true); return; }
+  const ctx = new AudioContext(), analyser = ctx.createAnalyser(), levels = new Float32Array(1024);
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  const chunks = [], started = performance.now();
+  trRecorder = new MediaRecorder(stream);
+  trRecorder.ondataavailable = e => chunks.push(e.data);
+  const meter = setInterval(() => {
+    analyser.getFloatTimeDomainData(levels);
+    $("trMeter").style.width = `${Math.min(100, Math.max(...levels.map(Math.abs)) * 100)}%`;
+    $("trTime").textContent = secs((performance.now() - started) / 1000);
+  }, 100);
+  trRecorder.onstop = async () => {
+    clearInterval(meter);
+    stream.getTracks().forEach(tr => tr.stop());
+    $("trMeter").style.width = "0"; $("trTime").textContent = "";
+    $("trRecordLabel").textContent = t("record");
+    trRecorder = null;
+    try {
+      trAudio = await ctx.decodeAudioData(await new Blob(chunks).arrayBuffer());
+      $("trName").textContent = t("trRecording", { s: secs(trAudio.duration) });
+    } catch { setStatus(t("trUnreadable"), true); }
+    ctx.close();
+  };
+  trRecorder.start();
+  $("trRecordLabel").textContent = t("stopRecord");
+});
+async function to16kWav(buffer) {
+  const rate = 16000, offline = new OfflineAudioContext(1, Math.max(1, Math.ceil(buffer.duration * rate)), rate);
+  const source = offline.createBufferSource();
+  source.buffer = buffer; source.connect(offline.destination); source.start();
+  return encodeWav((await offline.startRendering()).getChannelData(0), rate);  // channels are mixed to mono
+}
+$("trStart").addEventListener("click", async () => {
+  if (!trAudio) { setStatus(t("trNeedAudio"), true); return; }
+  trBusy = true; renderTranscribe();
+  setStatus(t("trWorking", { s: secs(trAudio.duration) }), false, true);
+  try {
+    const body = new FormData();
+    body.append("file", await to16kWav(trAudio), "audio.wav");
+    body.append("engine", trEngine);
+    body.append("language", $("trLang").value);
+    const r = await api("/stt/transcribe", { method: "POST", body });
+    const data = await r.json();
+    if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : t("serverError", { code: r.status }));
+    $("trResult").hidden = false;
+    $("trText").value = data.text;
+    $("trMeta").textContent = t("trMeta", { d: secs(data.duration), s: secs(data.seconds) }) +
+      (data.language && !$("trLang").value ? ", " + t("trDetected", { lang: langName(data.language) }) : "");
+    setStatus(data.text ? "" : t("trEmpty"));
+  } catch (e) { setStatus(errorText(e), true); }
+  trBusy = false; renderTranscribe();
+});
+$("trCopy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("trText").value); }
+  catch { $("trText").select(); document.execCommand("copy"); }
+  setStatus(t("trCopied"));
+});
+$("trDownload").addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([$("trText").value], { type: "text/plain;charset=utf-8" }));
+  a.download = `transcript-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 
 // API key: shown here so it can be copied or changed without opening api_key.txt (in Docker
