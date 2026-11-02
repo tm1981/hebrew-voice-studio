@@ -455,14 +455,18 @@ class LightBlueEngine:
     def diacritize(self, text: str) -> str:
         return self.tts.g2p._load_renikud().vocalize(text)
 
-    @staticmethod
-    def tag_languages(text: str, language: str) -> tuple[str, str]:
+    # Text with no Hebrew: LightBlue's lang="en" mode reads short sentences unevenly ("Good
+    # night." at a third of the usual loudness, now and then almost silent), while the same
+    # text marked <en> in Hebrew mode is steady and as clear (Whisper: 20/20 vs 19/20 exact).
+    english_as_tagged_hebrew = True
+
+    def tag_languages(self, text: str, language: str) -> tuple[str, str]:
         """LightBlue's Hebrew G2P can't read Latin script; English must be marked
-        <en>...</en> so it goes through espeak. Text with no Hebrew is read as English."""
+        <en>...</en> so it goes through espeak."""
         if language != "he" or LANG_TAG.search(text):
             return text, language
         if not HEBREW_LETTER.search(text):
-            return text, "en"
+            return (f"<en>{text}</en>", language) if self.english_as_tagged_hebrew else (text, "en")
         return LATIN_RUN.sub(lambda m: f"<en>{m.group(0)}</en>", text), language
 
     @staticmethod
@@ -516,6 +520,7 @@ class BlueTTS25Engine(LightBlueEngine):
 
     name = "blue25"
     label = "Blue 2.5"
+    english_as_tagged_hebrew = False  # trained on English too; its English voices read it natively
     codec_dir = ROOT / "models" / "blue-codec"
     onnx_dir = ROOT / "models" / "bluetts-2.5"
     onnx_source = "bluetts-2.5"
