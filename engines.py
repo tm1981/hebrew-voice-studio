@@ -49,7 +49,8 @@ PAUSE_SECONDS = 0.25
 HEBREW_LETTER = re.compile(r"[א-ת]")
 LANG_TAG = re.compile(r"<[a-z]{2}>")
 # A run of Latin-script words ("Claude Code", "rock'n'roll", "e-mail"), joined by spaces,
-# commas, colons or hyphens. Digits alone stay Hebrew so numbers are read in Hebrew.
+# commas, colons or hyphens. Digits alone stay Hebrew; text_prep has already written numbers
+# in English sentences as English words, so they join the run.
 LATIN_RUN = re.compile(r"[A-Za-z][\w'’\-]*(?:[ \t,:\-]+[A-Za-z][\w'’\-]*)*")
 # Each worker's Python env: <VOICE_ENVS>/<env>, conda's envs folder by default (the Docker
 # image sets VOICE_ENVS=/opt/envs).

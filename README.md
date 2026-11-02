@@ -247,7 +247,8 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
   **Compare all engines** reads the text with one voice from each engine.
 - **Text tricks:** `[הפסקה 2]` or `[pause 2]` adds a 2-second pause. Turn on **Dialogue** and
   write lines like `נועה: שלום` to give each speaker its own voice. Numbers, dates, prices and
-  common abbreviations are read as words. Niqqud you type is respected word by word.
+  common abbreviations are read as words, in English when the words around a number are
+  English ("I am 10 years old"). Niqqud you type is respected word by word.
 - **Sentences** (button on the player): replay, re-read or edit one sentence; the full file is
   rebuilt.
 - **Library:** every reading, kept across restarts, with search and download (WAV, MP3, FLAC, Opus).
