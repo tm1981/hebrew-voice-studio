@@ -84,7 +84,7 @@ def serve(backend, description: str) -> None:
 
     @app.delete("/voices/{name}")
     def remove_voice(name: str):
-        if name not in backend.builtin_voices:
+        if backend.custom_voices and name not in backend.builtin_voices:  # Magpie has no remove_voice
             backend.remove_voice(name)
         return {"ok": True}
 
