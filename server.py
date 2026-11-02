@@ -1056,7 +1056,7 @@ def restore_upload(file: UploadFile = File(...)):
             "api_key_changed": key_changed, "skipped": result["skipped"], "errors": errors}
 
 
-RESTORABLE_SETTINGS = {"zonos_url", "auto_unload_minutes", "keep_loaded", "openai_voices", "default_voice"}
+RESTORABLE_SETTINGS = {"zonos_url", "auto_unload_minutes", "keep_loaded", "openai_voices", "default_voice", "stt_words"}
 
 
 def apply_settings(values: dict) -> None:
@@ -1082,6 +1082,7 @@ def apply_settings(values: dict) -> None:
 # --- Long documents: read chapter by chapter in the background into the library
 
 MAX_UPLOAD_BYTES = 50 * 2**20
+MAX_STT_WORDS = 1000  # characters of hint words; Whisper reads up to about 200 tokens of them
 
 
 @app.post("/documents")
@@ -1368,12 +1369,39 @@ def openai_audio_voices():
     return {"voices": [{"id": i, "name": i} for i in ids]}
 
 
+class SttSettings(BaseModel):
+    words: str = Field("", max_length=MAX_STT_WORDS)
+
+
+def stt_words() -> str:
+    words = load_settings().get("stt_words", "")
+    return words if isinstance(words, str) else ""
+
+
+@app.get("/settings/stt")
+def stt_settings():
+    """Hint words for speech-to-text: names of rooms, devices and people, spelled as Home
+    Assistant knows them, so Whisper writes them that way."""
+    return {"enabled": stt is not None, "model": args.stt_model if stt else "", "words": stt_words()}
+
+
+@app.put("/settings/stt")
+def stt_settings_set(body: SttSettings):
+    save_settings(stt_words=body.words.strip())
+    return stt_settings()
+
+
+def stt_transcribe(audio: np.ndarray, language: str | None) -> str:
+    """For Wyoming: with the saved hint words."""
+    return stt.transcribe(audio, language, stt_words())
+
+
 @app.post("/v1/audio/transcriptions")
 def openai_transcriptions(file: UploadFile = File(...), model: str = Form("whisper-1"), language: str = Form("he"),
                           response_format: str = Form("json"), prompt: str = Form(""), temperature: float = Form(0.0)):
-    """OpenAI-compatible speech-to-text (see stt.py). Any model name is accepted; prompt and
-    temperature are accepted for compatibility and not used. response_format: json or text
-    (verbose_json comes back as json with the duration)."""
+    """OpenAI-compatible speech-to-text (see stt.py). Any model name is accepted; prompt: hint
+    words (the saved ones if empty); temperature is accepted and not used. response_format:
+    json or text (verbose_json comes back as json with the duration)."""
     if stt is None:
         raise HTTPException(404, "Speech-to-text is off (--stt-model off).")
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
@@ -1383,7 +1411,7 @@ def openai_transcriptions(file: UploadFile = File(...), model: str = Form("whisp
         audio = decode_audio(data)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    text = stt.transcribe(audio, language or None)
+    text = stt.transcribe(audio, language or None, prompt[:MAX_STT_WORDS] or stt_words())
     if response_format == "text":
         return Response(text, media_type="text/plain; charset=utf-8")
     if response_format == "verbose_json":
@@ -1417,5 +1445,5 @@ if __name__ == "__main__":
 
         allowed = wyoming_service.client_policy(trusted_client, os.environ.get("WYOMING_ALLOW", ""))
         wyoming_service.start(args.host, args.wyoming_port, list_voices, wyoming_speak, default_voice, allowed,
-                              transcribe=stt.transcribe if stt else None, stt_model=args.stt_model)
+                              transcribe=stt_transcribe if stt else None, stt_model=args.stt_model)
     uvicorn.run(app, host=args.host, port=args.port)

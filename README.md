@@ -337,8 +337,15 @@ Hebrew assistant and choose this app as both speech-to-text and text-to-speech.
   an RTX 5090.
 - `--stt-model` (or `STT_MODEL`) picks another Whisper model from Hugging Face, e.g.
   `ivrit-ai/whisper-large-v3`; `off` turns speech-to-text off.
+- **Words for speech-to-text** (Server status → Home Assistant): names of rooms, devices and
+  people, spelled the way Home Assistant knows them (`סלון, נאנוליף, יואב`). Whisper then
+  writes them that way (נאנוליף, not ננוליף), so the command matches.
+- Recordings without speech (a false wake word, room noise) come back empty instead of as
+  Whisper's made-up "תודה רבה": each part is checked with [Silero VAD](https://github.com/snakers4/silero-vad)
+  first.
 - OpenAI-compatible too: `POST /v1/audio/transcriptions` with a `file` (wav, mp3, flac, ogg; up to 15 minutes),
-  optional `language` (default `he`) and `response_format` (`json` or `text`).
+  optional `language` (default `he`), `prompt` (hint words; the saved ones if empty) and
+  `response_format` (`json` or `text`).
 
 ## The API key
 
@@ -420,6 +427,7 @@ consent of the person whose voice it is.
 | F5-TTS Hebrew | Hebrew fine-tune `Yzamari/f5tts-hebrew-v2` of F5-TTS v1 Base, with the Vocos vocoder `charactr/vocos-mel-24khz` | Apache 2.0 (the F5-TTS v1 Base weights it starts from are CC BY-NC 4.0, so commercial use is unclear) | [model](https://huggingface.co/Yzamari/f5tts-hebrew-v2) · [code](https://github.com/SWivid/F5-TTS) |
 | Zonos (optional) | Zonos-Hebrew (`notmax123/Zonos-Hebrew`), built on Zyphra's Zonos | **CC BY-NC 4.0** (non-commercial) | [model](https://huggingface.co/notmax123/Zonos-Hebrew) · [code](https://github.com/maxmelichov/Zonos-Hebrew) |
 | Speech-to-text | Hebrew fine-tune `ivrit-ai/whisper-large-v3-turbo` of OpenAI's Whisper large-v3-turbo | Apache 2.0 | [model](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo) |
+| Speech detection | Silero VAD | MIT | [code](https://github.com/snakers4/silero-vad) |
 
 ### Hebrew text and helper models
 

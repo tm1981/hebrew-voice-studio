@@ -144,6 +144,8 @@
     padding: 22px 26px; font: 400 calc(23px * var(--read-scale))/1.8 var(--read);
   }
   textarea:focus { outline: none; }
+  textarea.box { flex: none; resize: vertical; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 11px; font: 400 14px/1.5 var(--ui); }
+  textarea.box:focus { border-color: var(--accent); }
   .niqqud { white-space: pre-wrap; overflow: auto; font-size: calc(25px * var(--read-scale)); line-height: 1.95; }
   .niqqud .note { display: block; font: 400 13px/1.5 var(--ui); color: var(--muted); margin-bottom: 14px; }
   .editor-foot { display: flex; justify-content: space-between; gap: 16px; color: var(--faint); font-size: 12px; }
@@ -519,6 +521,14 @@
           <label for="defaultVoice" class="small" data-i18n="defaultVoice"></label>
           <select id="defaultVoice" style="width:auto"></select>
         </div>
+        <div id="sttWordsBox" hidden style="margin-top:14px">
+          <label for="sttWords" class="small" data-i18n="sttWordsLabel"></label>
+          <p class="muted small" data-i18n="sttWordsHelp"></p>
+          <textarea id="sttWords" class="box" rows="2" maxlength="1000" dir="auto"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button type="button" class="btn" id="sttWordsSave" data-i18n="sttWordsSave"></button>
+          </div>
+        </div>
         <p class="muted small" data-i18n="openaiMapHelp" style="margin-top:14px"></p>
         <table class="compact"><tbody id="openaiMap"></tbody></table>
         <div class="row" style="margin-top:12px">
@@ -699,6 +709,9 @@ const STR = {
     defaultVoice: "Default voice",
     openaiMapHelp: "Apps that use the OpenAI voice names (alloy, nova…) get these voices. A full voice name such as lightblue/noa always works too.",
     saveVoices: "Save voices", resetVoices: "Back to defaults", voicesSaved: "Voices saved.",
+    sttWordsLabel: "Words for speech-to-text",
+    sttWordsHelp: "Names of rooms, devices and people, spelled the way Home Assistant knows them, separated by commas. Speech-to-text then writes them that way, so commands match.",
+    sttWordsSave: "Save words", sttWordsSaved: "Words saved.",
     keyTitle: "API key",
     keyHelp: "Apps and devices outside the home network send this key. Changing it is immediate: apps with the old key stop working until you give them the new one.",
     keyFixed: "This key is set when the server starts (--api-key or TTS_API_KEY), so change it there.",
@@ -844,6 +857,9 @@ const STR = {
     defaultVoice: "קול ברירת מחדל",
     openaiMapHelp: "אפליקציות שמשתמשות בשמות הקולות של OpenAI (alloy, nova…) מקבלות את הקולות האלה. שם קול מלא כמו lightblue/noa תמיד עובד גם כן.",
     saveVoices: "שמירת הקולות", resetVoices: "חזרה לברירת המחדל", voicesSaved: "הקולות נשמרו.",
+    sttWordsLabel: "מילים לזיהוי הדיבור",
+    sttWordsHelp: "שמות של חדרים, מכשירים ואנשים, בכתיב שבו Home Assistant מכיר אותם, מופרדים בפסיקים. זיהוי הדיבור יכתוב אותם כך, והפקודות יזוהו.",
+    sttWordsSave: "שמירת המילים", sttWordsSaved: "המילים נשמרו.",
     keyTitle: "מפתח API",
     keyHelp: "אפליקציות ומכשירים מחוץ לרשת הביתית שולחים את המפתח הזה. שינוי נכנס לתוקף מיד: אפליקציות עם המפתח הישן יפסיקו לעבוד עד שתזינו בהן את החדש.",
     keyFixed: "המפתח נקבע בהפעלת השרת (‎--api-key או TTS_API_KEY), ולכן יש לשנות אותו שם.",
@@ -955,7 +971,7 @@ function go(view) {
   document.querySelectorAll("[data-view]").forEach(s => s.hidden = s.dataset.view !== view);
   document.querySelectorAll(".rail [data-go]").forEach(b => b.dataset.go === view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   storage.set("kol-view", view);
-  if (view === "status") { loadStatus(); loadZonos(); loadVoiceSettings(); loadApiKey(); }
+  if (view === "status") { loadStatus(); loadZonos(); loadVoiceSettings(); loadSttSettings(); loadApiKey(); }
   if (view === "documents") updateDocUses();
   $("main").scrollTop = 0;
 }
@@ -1062,6 +1078,24 @@ $("voiceMapSave").addEventListener("click", async () => {
 });
 $("voiceMapReset").addEventListener("click", () => renderVoiceSettings(voiceSettings?.openai_defaults));
 
+// Hint words for speech-to-text (names of rooms, devices, people), so Whisper spells them the
+// way Home Assistant knows them.
+async function loadSttSettings() {
+  let data = null;
+  try { data = await (await api("/settings/stt")).json(); } catch { }
+  $("sttWordsBox").hidden = !data?.enabled;
+  if (data) $("sttWords").value = data.words;
+}
+$("sttWordsSave").addEventListener("click", async () => {
+  try {
+    const r = await postJSON("/settings/stt", { words: $("sttWords").value }, "PUT");
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    $("sttWords").value = data.words;
+    setStatus(t("sttWordsSaved"));
+  } catch (e) { setStatus(errorText(e), true); }
+});
+
 // API key: shown here so it can be copied or changed without opening api_key.txt (in Docker
 // that file is inside a volume).
 let keyInfo = null;
@@ -1135,7 +1169,7 @@ $("restoreStart").addEventListener("click", async () => {
     api("/voices").then(r => r.json()).then(renderVoices).catch(() => {});
     api("/presets").then(r => r.json()).then(renderPresets).catch(() => {});
     api("/pronunciations").then(r => r.json()).then(renderLexicon).catch(() => {});
-    refreshLibrary(); loadStatus(); loadVoiceSettings(); loadZonos();
+    refreshLibrary(); loadStatus(); loadVoiceSettings(); loadSttSettings(); loadZonos();
   } catch (e) { setStatus(errorText(e), true); }
   finally { button.disabled = false; }
 });

@@ -137,6 +137,7 @@ segments==2.4.0
 semantic-version==2.10.0
 setuptools==80.10.2
 shellingham==1.5.4
+silero-vad==6.2.1
 six==1.17.0
 soundfile==0.14.0
 soxr==1.1.0
