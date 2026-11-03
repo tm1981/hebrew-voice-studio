@@ -199,6 +199,32 @@ To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder
 - Higgs's built-in voice presets aren't downloadable; copy `*.wav` + `*.lab` presets into
   `models/higgs-voices` if you have them, or use your own recorded voices.
 
+### Docker in WSL on Windows
+
+WSL 2 puts its containers behind a private network address, so `http://localhost:<port>`
+works on the Windows PC itself but other devices on the home network can't reach the app.
+Two ways to open it to them:
+
+- **Mirrored networking (Windows 11 22H2 and later):** put this in
+  `C:\Users\<you>\.wslconfig`, run `wsl --shutdown`, and start the container again:
+
+  ```ini
+  [wsl2]
+  networkingMode=mirrored
+  ```
+
+  WSL then shares the PC's addresses, and the app is at `http://<this PC's IP>:8010` (the
+  port on the left of `-p`). Windows Firewall must allow that port: in an administrator
+  PowerShell, `New-NetFirewallRule -DisplayName "Hebrew Voice Studio" -Direction Inbound
+  -Protocol TCP -LocalPort 8010,10200 -Action Allow`.
+- **A port proxy (older Windows):** in an administrator PowerShell, with the address that
+  `wsl hostname -I` prints first (it changes when WSL restarts):
+  `netsh interface portproxy add v4tov4 listenport=8010 listenaddress=0.0.0.0 connectport=8010 connectaddress=<WSL address>`,
+  plus the same firewall rule.
+
+Requests forwarded this way can arrive from WSL's or Docker's gateway address rather than
+the device's own, and then need the API key (see above).
+
 ## Run
 
 Double-click **`start.bat`**, or from a Command Prompt:
@@ -248,7 +274,7 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
 - **Text tricks:** `[הפסקה 2]` or `[pause 2]` adds a 2-second pause. Turn on **Dialogue** and
   write lines like `נועה: שלום` to give each speaker its own voice. Numbers, dates, prices and
   common abbreviations are read as words, in English when the words around a number are
-  English ("I am 10 years old"). Niqqud you type is respected word by word.
+  English ("I am 10 years old", "on 12/03/2025"). Niqqud you type is respected word by word.
 - **Sentences** (button on the player): replay, re-read or edit one sentence; the full file is
   rebuilt.
 - **Library:** every reading, kept across restarts, with search and download (WAV, MP3, FLAC, Opus).
@@ -256,7 +282,11 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
   ZIP of all chapters at the end.
 - **Voices:** all voices by engine. **Add a voice** takes up to 5 recordings of one speaker
   (upload or record); each can be played, trimmed by dragging, cut to the speech, and leveled
-  before saving. The new voice appears in every engine that can clone.
+  before saving. **Check quality** flags noise, clipping and length and shows what Whisper
+  hears in each recording. The new voice appears in every engine that can clone, from
+  recordings leveled to the same volume. On your own voices, **Edit** loads the saved
+  recordings back into the form to add, trim or remove some and save again, and the download
+  button saves them as a ZIP.
 - **Pronunciation:** words an engine says wrong, with how to read them; applies to every engine.
 - **Transcribe:** upload an audio or video file, or record from the microphone, and get the
   text back, with Copy and Download .txt. It runs on the built-in speech-to-text or on a

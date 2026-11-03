@@ -66,6 +66,12 @@ CURRENCY = {"₪": "שקלים", "$": "דולר", "€": "יורו", "£": "פא
 ENGLISH_CURRENCY = {"$": ("dollar", "cent"), "€": ("euro", "cent"), "£": ("pound", "penny"), "₪": ("shekel", "agora")}
 ENGLISH_PLURAL = {"penny": "pence", "agora": "agorot"}
 YEAR_BEFORE = {"in", "since", "from", "until", "till", "by", "of", "year", "circa", "early", "late", "mid"}
+# Day/month without a year ("on 3/4") is a date only after one of these; otherwise a fraction.
+DATE_BEFORE = {"on", "by", "until", "till", "from", "since", "before", "after", "dated"}
+MONTHS = ("January", "February", "March", "April", "May", "June", "July",
+          "August", "September", "October", "November", "December")
+# Same formats as _DATE (day first, "/" or ".", 2- or 4-digit year), plus "d/m" with no year.
+_ENGLISH_DATE = re.compile(r"(?<![\w.,/:])(\d{1,2})([/.])(\d{1,2})(?:[/.](\d{4}|\d{2}))?(?![\w/]|[.,:]\d)")
 _ENGLISH_NUMBER = re.compile(
     r"(?<![\w.,/:])(?:([$€£₪])\s*)?(\d{1,3}(?:,\d{3})+(?!\d)|\d+)(?:\.(\d+))?"
     r"(?::(\d{2}))?(?:(st|nd|rd|th)\b|\s*(%)|\s*([$€£₪]))?(?![\w/]|[.,:]\d)"
@@ -153,6 +159,17 @@ def _in_english(text: str, start: int, end: int) -> tuple[bool, str]:
     return bool(before and _LATIN.match(word)), word
 
 
+def _expand_english_date(m: re.Match) -> str:
+    day, sep, month, year = int(m.group(1)), m.group(2), int(m.group(3)), m.group(4)
+    english, before = _in_english(m.string, m.start(), m.end())
+    if not (english and 1 <= day <= 31 and 1 <= month <= 12) or not (year or sep == "/" and before in DATE_BEFORE):
+        return m.group(0)
+    words = f"the {num2words_en(day, to='ordinal')} of {MONTHS[month - 1]}"
+    if year:
+        words += " " + num2words_en(int(year) + (2000 if len(year) == 2 else 0), to="year")
+    return words
+
+
 def _english_count(n: int, unit: str) -> str:
     plural = unit if n == 1 else ENGLISH_PLURAL.get(unit, unit + "s")
     return f"{num2words_en(n)} {plural}"
@@ -191,6 +208,7 @@ def normalize(text: str) -> str:
     English, Hebrew for the rest."""
     for pattern, reading in _ABBREVIATION_PATTERNS:
         text = pattern.sub(lambda m, r=reading: m.group(1) + r, text)
+    text = _ENGLISH_DATE.sub(_expand_english_date, text)
     text = _ENGLISH_NUMBER.sub(_expand_english, text)
     text = _CURRENCY_BEFORE.sub(lambda m: f"{m.group(2)} {CURRENCY[m.group(1)]}", text)
     text = _CURRENCY_AFTER.sub(lambda m: f"{m.group(1)} {CURRENCY[m.group(2)]}", text)

@@ -210,6 +210,7 @@
   .clip-check { margin: 0; font-size: 12.5px; }
   .clip-check.ok { color: var(--ok); }
   .clip-check.bad { color: var(--error); }
+  .clip-heard { margin: 0; font-size: 12.5px; color: var(--muted); }
   .word-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 16px; border-bottom: 1px solid var(--line); }
   .dict-row .word, .dict-row .reading { font: 400 19px var(--read); flex: 1; min-width: 0; }
   .dict-row .reading { color: var(--muted); }
@@ -328,6 +329,7 @@
   <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke-linecap="round"/></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5M7 9l5-5 5 5M5 20h14"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></symbol>
   <symbol id="i-compare" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8h12M12 4l4 4-4 4M20 16H8M12 12l-4 4 4 4"/></symbol>
 </svg>
 
@@ -462,8 +464,9 @@
       <div class="two-col">
         <div id="voiceList"></div>
         <div class="panel form" id="addVoice">
-          <h2 data-i18n="addTitle"></h2>
-          <p class="muted small" data-i18n="addHelp"></p>
+          <h2 id="voiceFormTitle" data-i18n="addTitle"></h2>
+          <p class="muted small" id="voiceFormHelp" data-i18n="addHelp"></p>
+          <button type="button" class="btn ghost" id="newVoice" data-i18n="newVoice" hidden></button>
           <div class="field">
             <label for="voiceName" data-i18n="voiceName"></label>
             <input type="text" id="voiceName" maxlength="40" data-i18n-placeholder="voiceNamePh">
@@ -734,6 +737,10 @@ const STR = {
     builtin: "Built-in", custom: "Your voice", use: "Use", inUse: "Selected", fast: "fast", hebrewOnly: "Hebrew only", hebrewOnlyHint: "This engine reads Hebrew only: English words in the text will come out wrong.",
     deleteVoiceConfirm: "Delete the voice “{name}” from all engines?", voiceDeleted: "The voice “{name}” was deleted.",
     cantDelete: "Couldn't delete the voice.", deleteVoice: "Delete the voice {name}", voiceCount: "{n} voices",
+    editVoice: "Edit the voice {name}", downloadVoice: "Download the recordings of {name}", editTitle: "Edit a voice",
+    editHelp: "The voice's saved recordings. Add, trim or remove recordings, then save: the voice is rebuilt from the recordings here, in every engine.",
+    newVoice: "Add a new voice instead", loadingVoice: "Loading “{name}”…", cantLoadVoice: "Couldn't load the recordings of “{name}”.",
+    heard: "Heard: {text}", heardNothing: "No speech heard.",
     addTitle: "Add a voice", addHelp: "A clean recording of one speaker, 10 to 15 seconds. Up to 5 recordings of the same speaker give a steadier result. WAV, MP3, FLAC or OGG.",
     voiceName: "Voice name", voiceNamePh: "e.g. Noa", filesPick: "Add recording files (up to 5)",
     record: "Record", stopRecord: "Stop",
@@ -904,6 +911,10 @@ const STR = {
     builtin: "מובנה", custom: "קול שלך", use: "בחירה", inUse: "נבחר", fast: "מהיר", hebrewOnly: "עברית בלבד", hebrewOnlyHint: "המנוע הזה קורא עברית בלבד: מילים באנגלית בטקסט ייצאו משובשות.",
     deleteVoiceConfirm: "למחוק את הקול \"{name}\" מכל המנועים?", voiceDeleted: "הקול \"{name}\" נמחק.",
     cantDelete: "לא ניתן למחוק את הקול.", deleteVoice: "מחיקת הקול {name}", voiceCount: "{n} קולות",
+    editVoice: "עריכת הקול {name}", downloadVoice: "הורדת ההקלטות של {name}", editTitle: "עריכת קול",
+    editHelp: "ההקלטות השמורות של הקול. אפשר להוסיף, לקצר או למחוק הקלטות ואז לשמור: הקול נבנה מחדש מההקלטות שכאן, בכל המנועים.",
+    newVoice: "הוספת קול חדש במקום", loadingVoice: "טוען את \"{name}\"…", cantLoadVoice: "לא ניתן לטעון את ההקלטות של \"{name}\".",
+    heard: "נשמע: {text}", heardNothing: "לא נשמע דיבור.",
     addTitle: "הוספת קול", addHelp: "הקלטה נקייה של דובר אחד, 10 עד 15 שניות. עד 5 הקלטות של אותו דובר נותנות תוצאה יציבה יותר. WAV, MP3, FLAC או OGG.",
     voiceName: "שם הקול", voiceNamePh: "למשל: נועה", filesPick: "הוספת קובצי הקלטה (עד 5)",
     record: "הקלטה", stopRecord: "סיום",
@@ -1676,6 +1687,17 @@ function renderVoiceList() {
       use.addEventListener("click", () => { voiceSel.value = v.id; onVoiceChange(); go("read"); });
       li.append(use);
       if (!v.builtin) {
+        const edit = document.createElement("button");
+        edit.type = "button"; edit.className = "btn icon-btn"; edit.title = t("editVoice", { name: v.name });
+        edit.setAttribute("aria-label", edit.title);
+        edit.innerHTML = '<svg><use href="#i-edit"/></svg>';
+        edit.addEventListener("click", () => editVoice(v.name));
+        const down = document.createElement("a");
+        down.className = "btn icon-btn"; down.title = t("downloadVoice", { name: v.name });
+        down.setAttribute("aria-label", down.title);
+        down.href = withKey(`/voices/${encodeURIComponent(v.name)}/zip`);
+        down.innerHTML = '<svg><use href="#i-download"/></svg>';
+        li.append(edit, down);
         const del = document.createElement("button");
         del.type = "button"; del.className = "btn icon-btn danger"; del.title = t("deleteVoice", { name: v.name });
         del.setAttribute("aria-label", del.title);
@@ -1688,6 +1710,36 @@ function renderVoiceList() {
     box.append(block);
   }
 }
+// Editing loads the voice's saved recordings into the form; saving under the same name replaces the voice.
+async function editVoice(name) {
+  go("voices");
+  setStatus(t("loadingVoice", { name }), false, true);
+  try {
+    const list = await (await api(`/voices/${encodeURIComponent(name)}/clips`)).json();
+    const decoded = [];
+    for (const c of list) {
+      const r = await api(`/voices/${encodeURIComponent(name)}/clips/${c.index}`);
+      if (!r.ok) throw new Error();
+      decoded.push(await audioCtx().decodeAudioData(await r.arrayBuffer()));
+    }
+    stopClip(); clips.length = 0;
+    decoded.forEach((buf, i) => addClip(t("recordingN", { i: i + 1 }), buf));
+    renderClips();
+    $("voiceName").value = name;
+    setVoiceForm(true);
+    $("addVoice").scrollIntoView({ behavior: "smooth", block: "start" });
+    setStatus("");
+  } catch { setStatus(t("cantLoadVoice", { name }), true); }
+}
+function setVoiceForm(editing) {
+  for (const [id, key] of [["voiceFormTitle", editing ? "editTitle" : "addTitle"], ["voiceFormHelp", editing ? "editHelp" : "addHelp"]]) {
+    $(id).dataset.i18n = key; $(id).textContent = t(key);
+  }
+  $("newVoice").hidden = !editing;
+}
+$("newVoice").addEventListener("click", () => {
+  stopClip(); clips.length = 0; renderClips(); $("voiceName").value = ""; setVoiceForm(false);
+});
 async function deleteVoice(name) {
   if (!confirm(t("deleteVoiceConfirm", { name }))) return;
   const r = await api(`/voices/${encodeURIComponent(name)}`, { method: "DELETE" });
@@ -1711,7 +1763,7 @@ $("uploadVoice").addEventListener("click", async () => {
     if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
     renderVoices(data, `${selectedVoice().engine}/${name}`);
     $("voiceName").value = "";
-    stopClip(); clips.length = 0; renderClips();
+    stopClip(); clips.length = 0; renderClips(); setVoiceForm(false);
     setStatus(t("voiceSaved", { name }));
   } catch (e) {
     setStatus(errorText(e), true);
@@ -2410,7 +2462,7 @@ function renderClips() {
         <button type="button" class="btn ghost" data-act="volume">${t("evenVolume")}</button>
         <button type="button" class="btn ghost" data-act="reset">${t("undoClip")}</button>
       </div>
-      <p class="clip-check"></p>`;
+      <p class="clip-check"></p><p class="clip-heard" dir="auto"></p>`;
     card.querySelector(".clip-name").textContent = c.name;
     card.querySelector("[data-act=remove]").setAttribute("aria-label", t("deleteRecording"));
     c.view = card;
@@ -2449,6 +2501,9 @@ function updateClip(c) {
     check.textContent = c.check.ok ? t("checkGoodClip", { s: c.check.seconds }) : (issues || c.check.warnings.join(" "));
     check.className = "clip-check " + (c.check.ok ? "ok" : "bad");
   }
+  const heard = c.view.querySelector(".clip-heard"), text = c.check?.transcript;
+  heard.hidden = text == null;
+  if (text != null) heard.textContent = text.trim() ? t("heard", { text: text.trim() }) : t("heardNothing");
   drawClip(c);
 }
 // Waveform with the kept part bright, the cut parts dim, two handles and a playhead.

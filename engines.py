@@ -61,6 +61,9 @@ PREPARED_DIR = VOICES_DIR / ".cache"
 PREPARED_SAMPLE_RATE = 44100
 CLIP_GAP_SECONDS = 0.3
 TRIM_TOP_DB = 35  # quieter than peak by this much counts as silence
+# Clips are leveled before cloning: a quiet home recording made quiet clones (OmniVoice copies
+# the reference's level), and clips of one voice recorded at different levels now match.
+CLIP_RMS, CLIP_PEAK = 0.1, 0.95  # about -20 dBFS, peaks kept under -0.5 dB
 
 
 def is_audio(path: Path) -> bool:
@@ -83,13 +86,21 @@ def custom_voice_names() -> list[str]:
 
 
 def load_trimmed(path: Path, sample_rate: int = PREPARED_SAMPLE_RATE) -> np.ndarray:
-    """Mono audio with leading/trailing silence cut: zero-shot engines read the start of a
-    clip, so silence there is wasted reference."""
+    """Mono audio with leading/trailing silence cut (zero-shot engines read the start of a
+    clip, so silence there is wasted reference), leveled to CLIP_RMS."""
     import librosa
 
     audio, _ = librosa.load(str(path), sr=sample_rate, mono=True)
     trimmed, _ = librosa.effects.trim(audio, top_db=TRIM_TOP_DB)
-    return trimmed if trimmed.size else audio
+    return level(trimmed if trimmed.size else audio, CLIP_RMS, CLIP_PEAK)
+
+
+def level(audio: np.ndarray, rms: float, peak: float) -> np.ndarray:
+    """audio scaled to the given RMS, or less where that would push a peak over `peak`."""
+    now, top = float(np.sqrt(np.mean(audio**2))) if audio.size else 0.0, float(np.abs(audio).max()) if audio.size else 0.0
+    if now < 1e-4:
+        return audio
+    return (audio * min(rms / now, peak / top)).astype(np.float32)
 
 
 def is_fresh(cache: Path, *sources: Path) -> bool:

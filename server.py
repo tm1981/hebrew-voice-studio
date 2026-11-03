@@ -95,6 +95,7 @@ import secrets
 import threading
 import time
 from typing import Any, Iterator
+from urllib.parse import quote
 
 import numpy as np
 import soundfile as sf
@@ -113,11 +114,13 @@ from engines import (
     VOICES_DIR,
     clean_options,
     default_device,
+    level,
     load_engines,
     prepared_clip,
     remove_voice_files,
     split_sentences,
     stop_workers,
+    voice_clips,
 )
 from documents import MAX_DOCUMENT_CHARS, Jobs, extract_text, split_chapters, zip_chapters
 from engines import check_recording
@@ -371,10 +374,16 @@ class PronunciationRequest(BaseModel):
     reading: str = Field(..., min_length=1, max_length=200)
 
 
+# Engines come out at their own loudness (one sentence: LightBlue -15 dBFS, Chatterbox -20,
+# Kokoro -25), so every sentence is leveled: switching engines or voices keeps the volume.
+OUTPUT_RMS, OUTPUT_PEAK = 0.125, 0.95  # about -18 dBFS
+
+
 def synthesize(engine, voice: str, text: str, req: TTSRequest) -> np.ndarray:
     """Run an engine with the request's settings, mapping failures to HTTP errors."""
     try:
-        return engine.synthesize(text, voice, req.speed, language=req.language, **req.engine_options(engine))
+        audio = engine.synthesize(text, voice, req.speed, language=req.language, **req.engine_options(engine))
+        return level(np.asarray(audio, dtype=np.float32), OUTPUT_RMS, OUTPUT_PEAK)
     except ValueError as e:  # e.g. a language this engine doesn't support
         raise HTTPException(400, str(e))
     except RuntimeError as e:  # a worker or remote engine failed or went away
@@ -570,6 +579,40 @@ def delete_voice(name: str):
             engine.remove_voice(name)
     remove_voice_files(name)
     return list_voices()
+
+
+def saved_clips(name: str) -> list[Path]:
+    """A custom voice's recordings as saved (before the preparation engines clone from)."""
+    clips = voice_clips(name) if VOICE_NAME.match(name) else []
+    if not clips:
+        raise HTTPException(404, f"No custom voice named '{name}'.")
+    return clips
+
+
+@app.get("/voices/{name}/clips")
+def voice_clip_list(name: str):
+    """For editing a voice: its recordings, fetched one by one from /voices/{name}/clips/{index}."""
+    return [{"index": i, "file": p.name} for i, p in enumerate(saved_clips(name))]
+
+
+@app.get("/voices/{name}/clips/{index}")
+def voice_clip(name: str, index: int):
+    clips = saved_clips(name)
+    if not 0 <= index < len(clips):
+        raise HTTPException(404, f"The voice '{name}' has {len(clips)} recordings.")
+    return FileResponse(clips[index], filename=f"{name} {index + 1}{clips[index].suffix}")
+
+
+@app.get("/voices/{name}/zip")
+def voice_zip(name: str):
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for i, clip in enumerate(saved_clips(name), 1):
+            z.write(clip, f"{name} {i}{clip.suffix}")
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}.zip"})
 
 
 @app.post("/diacritize")
@@ -1176,16 +1219,29 @@ def voices_check(files: list[UploadFile] = File(...)):
     results = []
     for f in files:
         suffix = os.path.splitext(f.filename or "")[1].lower() or ".wav"
+        data = f.file.read()
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(f.file.read())
+            tmp.write(data)
         try:
-            results.append({"file": f.filename, **check_recording(Path(tmp.name))})
+            results.append({"file": f.filename, **check_recording(Path(tmp.name)), "transcript": check_transcript(data)})
         except Exception as e:
             results.append({"file": f.filename, "ok": False, "warnings": [f"לא ניתן לקרוא את הקובץ: {e}"],
                             "codes": ["unreadable"], "error": str(e)})
         finally:
             os.unlink(tmp.name)
     return results
+
+
+def check_transcript(data: bytes) -> str | None:
+    """What the built-in Whisper hears in a recording, so a mumbled or noisy part shows before
+    cloning; None with speech-to-text off. Engines given a wrong transcript add words."""
+    if stt is None:
+        return None
+    try:
+        return stt.transcribe(decode_audio(data), "he", stt_words())
+    except Exception as e:
+        print(f"[WARN] voice check transcript: {e}")
+        return None
 
 
 # --- Status of everything, for the UI's status panel
