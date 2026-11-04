@@ -13,6 +13,7 @@ click==8.5.0
 cloudpickle==3.1.2
 colorama==0.4.6
 decorator==5.3.1
+diffusers==0.42.1
 fastapi==0.162.0
 filelock==4.2.4
 fsspec==2026.9.0
@@ -28,6 +29,7 @@ httpx==0.28.1
 httpx2==2.16.0
 huggingface_hub==2.4.0
 idna==3.20
+importlib_metadata==10.1.0
 Jinja2==3.1.6
 joblib==1.6.0
 lazy-loader==0.6
@@ -93,3 +95,4 @@ urllib3==2.8.0
 uvicorn==0.54.0
 webdataset==1.0.2
 wheel==0.48.0
+zipp==4.1.2

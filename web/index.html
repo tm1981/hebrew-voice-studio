@@ -398,6 +398,7 @@
           <label for="voice"><span data-i18n="voice"></span><span class="engine-tag" id="engineTag"></span></label>
           <select id="voice"></select>
           <p class="hint" id="hebrewOnlyHint" data-i18n="hebrewOnlyHint" hidden></p>
+          <p class="hint" id="englishOnlyHint" data-i18n="englishOnlyHint" hidden></p>
         </div>
         <div class="field">
           <label for="speed"><span data-i18n="speed"></span><output id="speedOut">1.00×</output></label>
@@ -735,6 +736,7 @@ const STR = {
     stop: "Stop", zip: "Download all chapters (ZIP)",
     voicesHelp: "The built-in voices of every engine, plus voices you add. A voice you add is cloned by every engine that can clone.",
     builtin: "Built-in", custom: "Your voice", use: "Use", inUse: "Selected", fast: "fast", hebrewOnly: "Hebrew only", hebrewOnlyHint: "This engine reads Hebrew only: English words in the text will come out wrong.",
+    englishOnly: "English only", englishOnlyHint: "This engine reads English only: Hebrew in the text will come out wrong. Its first reading loads the model, which takes a minute or more.",
     deleteVoiceConfirm: "Delete the voice “{name}” from all engines?", voiceDeleted: "The voice “{name}” was deleted.",
     cantDelete: "Couldn't delete the voice.", deleteVoice: "Delete the voice {name}", voiceCount: "{n} voices",
     editVoice: "Edit the voice {name}", downloadVoice: "Download the recordings of {name}", editTitle: "Edit a voice",
@@ -909,6 +911,7 @@ const STR = {
     stop: "עצירה", zip: "הורדת כל הפרקים (ZIP)",
     voicesHelp: "הקולות המובנים של כל מנוע, וגם קולות שהוספתם. קול שתוסיפו ישובט בכל מנוע שיודע לשבט קול.",
     builtin: "מובנה", custom: "קול שלך", use: "בחירה", inUse: "נבחר", fast: "מהיר", hebrewOnly: "עברית בלבד", hebrewOnlyHint: "המנוע הזה קורא עברית בלבד: מילים באנגלית בטקסט ייצאו משובשות.",
+    englishOnly: "אנגלית בלבד", englishOnlyHint: "המנוע הזה קורא אנגלית בלבד: עברית בטקסט תצא משובשת. ההקראה הראשונה טוענת את המודל, וזה לוקח דקה או יותר.",
     deleteVoiceConfirm: "למחוק את הקול \"{name}\" מכל המנועים?", voiceDeleted: "הקול \"{name}\" נמחק.",
     cantDelete: "לא ניתן למחוק את הקול.", deleteVoice: "מחיקת הקול {name}", voiceCount: "{n} קולות",
     editVoice: "עריכת הקול {name}", downloadVoice: "הורדת ההקלטות של {name}", editTitle: "עריכת קול",
@@ -1637,7 +1640,8 @@ function voiceLabel(v) {
   return /^[a-z]/.test(name) ? name[0].toUpperCase() + name.slice(1) : name;
 }
 const engineLabel = (v) => FAST_ENGINES.has(v.engine) ? `${v.engine_label} (${t("fast")})`
-  : v.hebrew_only ? `${v.engine_label} (${t("hebrewOnly")})` : (v.engine_label || v.engine);
+  : v.hebrew_only ? `${v.engine_label} (${t("hebrewOnly")})`
+  : v.english_only ? `${v.engine_label} (${t("englishOnly")})` : (v.engine_label || v.engine);
 const engines = () => [...new Set(voices.map(v => v.engine))];
 
 function renderVoices(list, select) {
@@ -1660,6 +1664,7 @@ function onVoiceChange() {
   storage.set("kol-voice", v.id);
   $("engineTag").textContent = v.engine_label || "";
   $("hebrewOnlyHint").hidden = !v.hebrew_only;
+  $("englishOnlyHint").hidden = !v.english_only;
   renderEngineOptions();
   renderVoiceList();
   updateDocUses();

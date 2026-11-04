@@ -23,11 +23,13 @@ a cloud service.
 | **QwenTTS-he** (Qwen3-TTS 1.7B + Hebrew adapter) | GPU, worker process (env `qwentts`) | female, male | yes (good) | Clearest in testing; about 8x real time. |
 | **Magpie-TTS Hebrew** (NVIDIA Magpie 357M + Hebrew fine-tune) | GPU, worker process (env `magpie`) | 15 Hebrew voices (female1-5, male1-5, voice1-3, female1-he, male1-he) | no | Very clear (98-99% of words heard in testing); about 1.4x real time, 22 kHz. |
 | **F5-TTS Hebrew** (F5-TTS + Hebrew fine-tune) | GPU, worker process (env `f5`) | your recorded voices only | yes | Clear (no words added or dropped in 30 test sentences); about 2.5x real time, 24 kHz. Needs at least one recorded voice. |
+| **VibeVoice 1.5B / 7B** (Microsoft) | GPU, worker process (env `omnivoice`) | alice, carter, frank, maya, samuel | yes (no transcript needed) | **English only.** Long-form, natural English; about real time (1.5B). Starts unloaded: the first reading loads it (1.5B: about 7 GB of GPU memory, 7B: about 19 GB). |
 | **Zonos-Hebrew** | GPU, Docker on another machine | default | yes | Optional, off by default. Hebrew only; has emotions. |
 
 English words inside Hebrew text, and English-only text, are read by every engine except
 F5-TTS and Zonos, which read Hebrew only (the app marks them "Hebrew only"). Kokoro and Magpie
-read English with their Hebrew voices, so with a Hebrew accent.
+read English with their Hebrew voices, so with a Hebrew accent. VibeVoice is the reverse: it
+reads English only (marked "English only"), and Hebrew comes out as nonsense.
 
 Every engine is optional at runtime: one that fails to load is skipped, and the server
 runs with the rest.
@@ -96,7 +98,9 @@ pip install --no-deps -r requirements\omnivoice.lock.txt
 ```
 
 The server finds the env by name and starts `workers\omnivoice_worker.py` in it. Without
-this env OmniVoice is skipped.
+this env OmniVoice is skipped. VibeVoice runs in the same env (`workers\vibevoice_worker.py`),
+so this env also gives you VibeVoice 1.5B and 7B; their models (5.4 and 18.7 GB) download on
+their first reading.
 
 ### 4. Higgs Audio v3 (optional)
 
@@ -468,6 +472,7 @@ consent of the person whose voice it is.
 | QwenTTS-he | Hebrew LoRA adapter `notmax123/QwenTTS-he-1.7B` (by Max Melichov) on Alibaba's `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | Apache-2.0 (adapter and base model) | [adapter](https://huggingface.co/notmax123/QwenTTS-he-1.7B) · [base model](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) · [code](https://github.com/QwenLM/Qwen3-TTS) |
 | Magpie-TTS Hebrew | Hebrew fine-tune `notmax123/magpie_tts_multilingual_357m-he` (by Max Melichov) of NVIDIA's `nvidia/magpie_tts_multilingual_357m`, with the codec `nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps` | NVIDIA Open Model License (commercial use allowed under its terms) | [model](https://huggingface.co/notmax123/magpie_tts_multilingual_357m-he) · [base model](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) · [code](https://github.com/maxmelichov/magpie_tts_multilingual_357m-he) |
 | Higgs | Higgs TTS 3 (4B) by Boson AI (`bosonai/higgs-tts-3-4b`), run through the plain-transformers port `multimodalart/higgs-audio-v3-tts-4b-transformers` (the same weights file, plus modeling code), with the codec `bosonai/higgs-audio-v2-tokenizer` | **Research and non-commercial** (Boson Higgs TTS 3 license; its Creator Use Grant allows monetized creator content if it credits Boson AI's Higgs Audio) | [model](https://huggingface.co/bosonai/higgs-tts-3-4b) · [port](https://huggingface.co/multimodalart/higgs-audio-v3-tts-4b-transformers) · [codec](https://huggingface.co/bosonai/higgs-audio-v2-tokenizer) |
+| VibeVoice | `vibevoice/VibeVoice-1.5B-hf` and `vibevoice/VibeVoice-7B-hf` (Microsoft's VibeVoice in Transformers format); sample voices from `bezzam/vibevoice_samples` | MIT | [1.5B](https://huggingface.co/vibevoice/VibeVoice-1.5B-hf) · [7B](https://huggingface.co/vibevoice/VibeVoice-7B-hf) · [code](https://github.com/microsoft/VibeVoice) |
 | F5-TTS Hebrew | Hebrew fine-tune `Yzamari/f5tts-hebrew-v2` of F5-TTS v1 Base, with the Vocos vocoder `charactr/vocos-mel-24khz` | Apache 2.0 (the F5-TTS v1 Base weights it starts from are CC BY-NC 4.0, so commercial use is unclear) | [model](https://huggingface.co/Yzamari/f5tts-hebrew-v2) · [code](https://github.com/SWivid/F5-TTS) |
 | Zonos (optional) | Zonos-Hebrew (`notmax123/Zonos-Hebrew`), built on Zyphra's Zonos | **CC BY-NC 4.0** (non-commercial) | [model](https://huggingface.co/notmax123/Zonos-Hebrew) · [code](https://github.com/maxmelichov/Zonos-Hebrew) |
 | Speech-to-text | Hebrew fine-tune `ivrit-ai/whisper-large-v3-turbo` of OpenAI's Whisper large-v3-turbo | Apache 2.0 | [model](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo) |

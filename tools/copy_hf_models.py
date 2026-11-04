@@ -19,6 +19,8 @@ REPOS = [
     "multimodalart/higgs-audio-v3-tts-4b-transformers",  # Higgs Audio v3
     "bosonai/higgs-audio-v2-tokenizer",               # Higgs audio codec
     "dicta-il/dictabert-large-char-menaked",          # tokenizer for the Dicta and Phonikud niqqud models
+    "vibevoice/VibeVoice-1.5B-hf",                    # VibeVoice 1.5B
+    "vibevoice/VibeVoice-7B-hf",                      # VibeVoice 7B
 ]
 
 

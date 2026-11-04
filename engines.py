@@ -1,7 +1,8 @@
 """TTS engines behind one interface.
 
 In-process (conda env 'voice'):  LightBlue, Blue 2.5, Kokoro (CPU, ONNX) and Chatterbox (GPU).
-Workers in their own env:          OmniVoice, Higgs, QwenTTS-he, Magpie and F5-TTS, see workers/. Their
+Workers in their own env:          OmniVoice, Higgs, QwenTTS-he, Magpie, F5-TTS and VibeVoice (English),
+                                   see workers/. Their
                                    dependencies conflict with Chatterbox, so each runs as a
                                    small HTTP server started by RemoteEngine.
 GPU engines (Chatterbox and the workers) can be unloaded to free GPU memory; see OnDemand.
@@ -765,7 +766,9 @@ WORKER_OPTIONS = {
     "magpie": [rng("temperature", 0.7, 0.1, 1.5, 0.05), rng("top_k", 80, 1, 200, 1),
                rng("guidance", 2.5, 1.0, 5.0, 0.1), SEED],
     "f5": [rng("steps", 32, 8, 64, 4), rng("guidance", 2.0, 0.0, 5.0, 0.1), rng("sway", -1.0, -1.0, -0.5, 0.1), SEED],
+    "vibevoice": [rng("guidance", 1.3, 1.0, 3.0, 0.05), rng("steps", 10, 5, 30, 1), SEED],
 }
+WORKER_OPTIONS["vibevoice7b"] = WORKER_OPTIONS["vibevoice"]
 
 
 class RemoteEngine(OnDemand):
@@ -778,10 +781,15 @@ class RemoteEngine(OnDemand):
 
     uses_niqqud = False  # these models read the text as-is; there's no niqqud step to preview
     HEBREW_ONLY = {"f5"}  # Whisper heard nonsense for English ("This is Tomahawk...")
+    ENGLISH_ONLY = {"vibevoice", "vibevoice7b"}  # trained on English and Chinese
 
-    def __init__(self, name: str, label: str, env: str, script: str, port: int, startup_timeout: float):
+    def __init__(self, name: str, label: str, env: str, script: str, port: int, startup_timeout: float,
+                 unloaded: dict | None = None):
+        """unloaded: the worker's /info, known ahead, for an engine that starts unloaded and
+        loads on its first reading (too big to load next to the others at startup)."""
         self.name, self.label = name, label
         self.hebrew_only = name in self.HEBREW_ONLY
+        self.english_only = name in self.ENGLISH_ONLY
         self.option_specs = WORKER_OPTIONS.get(name, [])
         self.env, self.script, self.port = env, script, port
         self.url = f"http://127.0.0.1:{port}"
@@ -790,18 +798,30 @@ class RemoteEngine(OnDemand):
         self.lock = threading.RLock()
         self.voices: dict = {}
         self.builtin_voices: set[str] = set()
-        self._start()
+        if unloaded is None:
+            self._start()
+            return
+        if not self._python().exists():
+            raise RuntimeError(f"conda env '{self.env}' not found")
+        self.sample_rate, self.native_speed, self.custom_voices = (
+            unloaded["sample_rate"], unloaded["native_speed"], unloaded["custom_voices"])
+        self.builtin_voices = set(unloaded["builtin_voices"])
+        self.voices = dict.fromkeys([*unloaded["builtin_voices"], *custom_voice_names()])
 
     def _start(self) -> None:
         if self._info() is None:  # not already running: start it
-            python = ENVS_DIR / self.env / ("python.exe" if os.name == "nt" else "bin/python")
+            python = self._python()
             if not python.exists():
                 raise RuntimeError(f"conda env '{self.env}' not found")
             print(f"Starting {self.label} worker (env '{self.env}', port {self.port})...")
             self.process = subprocess.Popen(
-                [str(python), "-X", "utf8", str(ROOT / "workers" / self.script), "--port", str(self.port)],
+                [str(python), "-X", "utf8", str(ROOT / "workers" / self.script.split()[0]), *self.script.split()[1:],
+                 "--port", str(self.port)],
                 cwd=str(ROOT),
             )
+
+    def _python(self) -> Path:
+        return ENVS_DIR / self.env / ("python.exe" if os.name == "nt" else "bin/python")
 
     def _load(self) -> None:
         self._start()
@@ -985,15 +1005,23 @@ class ZonosEngine:
 ZONOS_URL = os.environ.get("ZONOS_URL", "")
 
 WORKERS = [
-    # name, label, conda env, script, port offset from the server's port, startup timeout
-    # (first run downloads/loads weights). Offsets keep each server instance's workers apart:
-    # server 8010 -> workers 8031 to 8035.
+    # name, label, conda env, script (and its arguments), port offset from the server's port,
+    # startup timeout (first run downloads/loads weights). Offsets keep each server instance's
+    # workers apart: server 8010 -> workers 8031 to 8037.
     ("omnivoice", "OmniVoice", "omnivoice", "omnivoice_worker.py", 21, 600),
     ("higgs", "Higgs", "higgs", "higgs_worker.py", 22, 600),
     ("qwen", "QwenTTS-he", "qwentts", "qwen_worker.py", 23, 600),
     ("magpie", "Magpie-TTS Hebrew", "magpie", "magpie_worker.py", 24, 600),
     ("f5", "F5-TTS Hebrew", "f5", "f5_worker.py", 25, 600),
+    # VibeVoice runs in OmniVoice's env (same transformers); the first start downloads 5 / 19 GB
+    ("vibevoice", "VibeVoice 1.5B", "omnivoice", "vibevoice_worker.py --size 1.5b", 26, 1800),
+    ("vibevoice7b", "VibeVoice 7B", "omnivoice", "vibevoice_worker.py --size 7b", 27, 1800),
 ]
+# Workers that start unloaded (7 and 19 GB of GPU memory), with the /info they would give
+# (the voices in workers/vibevoice_worker.py BUILTIN).
+VIBEVOICE_INFO = {"sample_rate": 24000, "native_speed": False, "custom_voices": True,
+                  "builtin_voices": ["alice", "carter", "frank", "maya", "samuel"]}
+START_UNLOADED = {"vibevoice": VIBEVOICE_INFO, "vibevoice7b": VIBEVOICE_INFO}
 
 
 def engine_enabled(name: str) -> bool:
@@ -1006,14 +1034,19 @@ def engine_enabled(name: str) -> bool:
 def load_engines(device: str, server_port: int, zonos_url: str = ZONOS_URL) -> dict:
     """Workers start first so they load in parallel with the in-process engines.
     LightBlue comes first in the list: it's the fastest and the UI's default."""
-    remotes = []
+    remotes, lazy = [], []
     for name, label, env, script, offset, timeout in WORKERS:
         if not engine_enabled(name):
             continue
         try:
-            remotes.append(RemoteEngine(name, label, env, script, server_port + offset, timeout))
+            remote = RemoteEngine(name, label, env, script, server_port + offset, timeout, START_UNLOADED.get(name))
         except Exception as e:
             print(f"[WARN] {label} worker not started: {e}")
+            continue
+        if name in START_UNLOADED:
+            lazy.append(remote)
+        else:
+            remotes.append(remote)
 
     engines = {}
     factories = [("lightblue", LightBlueEngine), ("blue25", BlueTTS25Engine), ("kokoro", KokoroEngine),
@@ -1035,6 +1068,7 @@ def load_engines(device: str, server_port: int, zonos_url: str = ZONOS_URL) -> d
         except Exception as e:
             print(f"[WARN] {remote.label} failed to load: {e}")
             remote.stop()
+    engines.update((remote.name, remote) for remote in lazy)
     if not engines:
         raise RuntimeError("No TTS engine could be loaded.")
     return engines

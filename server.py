@@ -508,6 +508,7 @@ def list_voices():
             "builtin": name in e.builtin_voices,
             "options": [spec["key"] for spec in getattr(e, "option_specs", [])],
             "hebrew_only": getattr(e, "hebrew_only", False),  # English in the text comes out wrong
+            "english_only": getattr(e, "english_only", False),  # Hebrew in the text comes out wrong
         }
         for e in engines.values()
         for name in e.voices
