@@ -5,7 +5,7 @@ Workers in their own env:          OmniVoice, Higgs, QwenTTS-he, Magpie, F5-TTS 
                                    see workers/. Their
                                    dependencies conflict with Chatterbox, so each runs as a
                                    small HTTP server started by RemoteEngine.
-GPU engines (Chatterbox and the workers) can be unloaded to free GPU memory; see OnDemand.
+GPU engines (Chatterbox and the workers) start unloaded and can be unloaded again; see OnDemand.
 On another machine (optional):     Zonos-Hebrew (Docker, Gradio API at ZONOS_URL / --zonos-url).
 
 Every engine exposes:
@@ -244,8 +244,8 @@ def clean_options(specs: list[dict], values: dict) -> dict:
 
 
 class OnDemand:
-    """A GPU engine that can be unloaded to free its memory; the next request loads it again
-    (20-60 s). Subclasses hold self.lock (an RLock) while they work, so unloading never cuts
+    """A GPU engine that starts unloaded and can be unloaded to free its memory; the next request
+    loads it (20-60 s, the biggest about 3 minutes). Subclasses hold self.lock (an RLock) while they work, so unloading never cuts
     a running job, and implement _load() / _unload(). Voice names stay listed while unloaded."""
 
     gpu = True
@@ -284,6 +284,7 @@ class ChatterboxEngine(OnDemand):
     ]
     custom_voices = True
     uses_niqqud = True
+    sample_rate = 24000  # the model's, needed before it loads
 
     def __init__(self, device: str):
         from chatterbox.mtl_tts import Conditionals
@@ -295,10 +296,8 @@ class ChatterboxEngine(OnDemand):
         self.device = device
         self.dicta = load_dicta()  # CPU; stays when the model is unloaded
         self.lock = threading.RLock()
-        self.voices = {"default": None}
+        self.voices = dict.fromkeys(["default", *custom_voice_names()])
         self.builtin_voices = {"default"}
-        with self.lock:
-            self.ensure_loaded()
 
     def _load(self) -> None:
         from chatterbox.mtl_tts import ChatterboxMultilingualTTS
@@ -777,16 +776,15 @@ class RemoteEngine(OnDemand):
     The worker protocol: GET /info, POST /synthesize {text, voice, speed} -> WAV,
     POST /voices {name, path}, DELETE /voices/{name}, POST /shutdown. Text is split into
     sentences here and sent one at a time; speed is applied here if the worker can't do it.
-    Unloading stops the worker process, which frees all of its GPU memory."""
+    The worker process starts on the first reading; unloading stops it, which frees all of its
+    GPU memory."""
 
     uses_niqqud = False  # these models read the text as-is; there's no niqqud step to preview
     HEBREW_ONLY = {"f5"}  # Whisper heard nonsense for English ("This is Tomahawk...")
     ENGLISH_ONLY = {"vibevoice", "vibevoice7b"}  # trained on English and Chinese
 
-    def __init__(self, name: str, label: str, env: str, script: str, port: int, startup_timeout: float,
-                 unloaded: dict | None = None):
-        """unloaded: the worker's /info, known ahead, for an engine that starts unloaded and
-        loads on its first reading (too big to load next to the others at startup)."""
+    def __init__(self, name: str, label: str, env: str, script: str, port: int, startup_timeout: float, info: dict):
+        """info: what the worker's /info will say, to list the engine before it loads."""
         self.name, self.label = name, label
         self.hebrew_only = name in self.HEBREW_ONLY
         self.english_only = name in self.ENGLISH_ONLY
@@ -796,17 +794,12 @@ class RemoteEngine(OnDemand):
         self.startup_timeout = startup_timeout
         self.process = None
         self.lock = threading.RLock()
-        self.voices: dict = {}
-        self.builtin_voices: set[str] = set()
-        if unloaded is None:
-            self._start()
-            return
         if not self._python().exists():
             raise RuntimeError(f"conda env '{self.env}' not found")
         self.sample_rate, self.native_speed, self.custom_voices = (
-            unloaded["sample_rate"], unloaded["native_speed"], unloaded["custom_voices"])
-        self.builtin_voices = set(unloaded["builtin_voices"])
-        self.voices = dict.fromkeys([*unloaded["builtin_voices"], *custom_voice_names()])
+            info["sample_rate"], info["native_speed"], info["custom_voices"])
+        self.builtin_voices = set(info["builtin_voices"])
+        self.voices = dict.fromkeys([*info["builtin_voices"], *(custom_voice_names() if self.custom_voices else [])])
 
     def _start(self) -> None:
         if self._info() is None:  # not already running: start it
@@ -1017,11 +1010,22 @@ WORKERS = [
     ("vibevoice", "VibeVoice 1.5B", "omnivoice", "vibevoice_worker.py --size 1.5b", 26, 1800),
     ("vibevoice7b", "VibeVoice 7B", "omnivoice", "vibevoice_worker.py --size 7b", 27, 1800),
 ]
-# Workers that start unloaded (7 and 19 GB of GPU memory), with the /info they would give
-# (the voices in workers/vibevoice_worker.py BUILTIN).
+# What each worker's /info says, for listing it while it's unloaded (see the worker's own voices).
+HIGGS_PRESETS = ROOT / "models" / "higgs-voices"  # optional, see the README
 VIBEVOICE_INFO = {"sample_rate": 24000, "native_speed": False, "custom_voices": True,
                   "builtin_voices": ["alice", "carter", "frank", "maya", "samuel"]}
-START_UNLOADED = {"vibevoice": VIBEVOICE_INFO, "vibevoice7b": VIBEVOICE_INFO}
+WORKER_INFO = {
+    "omnivoice": {"sample_rate": 24000, "native_speed": True, "custom_voices": True, "builtin_voices": ["female", "male"]},
+    "higgs": {"sample_rate": 24000, "native_speed": False, "custom_voices": True,
+              "builtin_voices": [p.stem for p in sorted(HIGGS_PRESETS.glob("*.wav"))]},
+    "qwen": {"sample_rate": 24000, "native_speed": False, "custom_voices": True, "builtin_voices": ["female", "male"]},
+    "magpie": {"sample_rate": 22050, "native_speed": False, "custom_voices": False,
+               "builtin_voices": ["female1", "female1-he", "female2", "female3", "female4", "female5", "male1", "male1-he",
+                                  "male2", "male3", "male4", "male5", "voice1", "voice2", "voice3"]},
+    "f5": {"sample_rate": 24000, "native_speed": True, "custom_voices": True, "builtin_voices": []},
+    "vibevoice": VIBEVOICE_INFO,
+    "vibevoice7b": VIBEVOICE_INFO,
+}
 
 
 def engine_enabled(name: str) -> bool:
@@ -1032,21 +1036,16 @@ def engine_enabled(name: str) -> bool:
 
 
 def load_engines(device: str, server_port: int, zonos_url: str = ZONOS_URL) -> dict:
-    """Workers start first so they load in parallel with the in-process engines.
+    """The CPU engines load here; GPU engines are only listed and load when first used.
     LightBlue comes first in the list: it's the fastest and the UI's default."""
-    remotes, lazy = [], []
+    workers = []
     for name, label, env, script, offset, timeout in WORKERS:
         if not engine_enabled(name):
             continue
         try:
-            remote = RemoteEngine(name, label, env, script, server_port + offset, timeout, START_UNLOADED.get(name))
+            workers.append(RemoteEngine(name, label, env, script, server_port + offset, timeout, WORKER_INFO[name]))
         except Exception as e:
-            print(f"[WARN] {label} worker not started: {e}")
-            continue
-        if name in START_UNLOADED:
-            lazy.append(remote)
-        else:
-            remotes.append(remote)
+            print(f"[WARN] {label} isn't available: {e}")
 
     engines = {}
     factories = [("lightblue", LightBlueEngine), ("blue25", BlueTTS25Engine), ("kokoro", KokoroEngine),
@@ -1062,13 +1061,7 @@ def load_engines(device: str, server_port: int, zonos_url: str = ZONOS_URL) -> d
         except Exception as e:  # keep serving with whatever engine did load
             print(f"[WARN] engine failed to load: {e}")
 
-    for remote in remotes:
-        try:
-            engines[remote.name] = remote.wait_ready()
-        except Exception as e:
-            print(f"[WARN] {remote.label} failed to load: {e}")
-            remote.stop()
-    engines.update((remote.name, remote) for remote in lazy)
+    engines.update((worker.name, worker) for worker in workers)
     if not engines:
         raise RuntimeError("No TTS engine could be loaded.")
     return engines

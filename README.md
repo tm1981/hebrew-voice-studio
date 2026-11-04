@@ -77,9 +77,9 @@ python tools\fetch_vendor.py
 This downloads BlueTTS's runtime into `vendor\` at the version this app was tested with
 (it isn't part of this repository).
 
-**Models download by themselves** into `models\` the first time an engine starts (Hugging
-Face models into `models\hf`), so the first start takes a while and needs about 40 GB of disk
-for all engines. Some models ask you to accept their terms on the Hugging Face website first;
+**Models download by themselves** into `models\` the first time you use an engine (Hugging
+Face models into `models\hf`), so that first use takes a while. All engines need about 40 GB of
+disk. Some models ask you to accept their terms on the Hugging Face website first;
 then run `hf auth login`. To start only some engines (and download only their models), set
 `VOICE_ENGINES`, for example `set VOICE_ENGINES=lightblue,kokoro,qwen,magpie`.
 
@@ -176,7 +176,7 @@ saved in the web UI, then `ZONOS_URL`. Without any of them, Zonos is not used.
 ## Docker
 
 The image holds the code and every engine's Python environment (about 9.4 GB to pull), and no
-models: the app downloads them into a volume the first time each engine starts.
+models: the app downloads them into a volume the first time each engine is used.
 
 ```bash
 docker run -d --gpus all -p 8010:8010 -p 10200:10200   -v /srv/voice/models:/app/models   -v /srv/voice/data:/data   ghcr.io/tm1981/hebrew-voice-studio:latest
@@ -189,8 +189,8 @@ To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder
 - `/data` holds your data: recorded voices, the library, presets, settings, pronunciations and
   `api_key.txt`.
 - `VOICE_ENGINES=lightblue,kokoro,qwen,magpie` starts only those engines (and downloads only
-  their models). Every GPU engine together needs about 20-23 GB of GPU memory; unused ones
-  unload by themselves after 30 minutes.
+  their models). GPU engines start unloaded and load when you choose one of their voices, so
+  only what you use takes GPU memory; unused ones unload by themselves after 30 minutes.
 - `ZONOS_URL=http://<host>:7860/` connects Zonos-Hebrew (or set it in the web UI).
 - Port 10200 is the Wyoming port for [Home Assistant](#home-assistant).
 - In Docker, clients that reach the app through Docker's own gateway address (for example
@@ -237,8 +237,8 @@ Double-click **`start.bat`**, or from a Command Prompt:
 start.bat
 ```
 
-The first start takes a few minutes while the models load (OmniVoice and Higgs load in
-parallel in background processes). When the console shows
+Only the CPU engines load at startup, so it starts quickly; each GPU engine loads when you
+choose one of its voices. When the console shows
 `Uvicorn running on http://0.0.0.0:8010`, open:
 
 - **On this PC:** http://localhost:8010
@@ -296,11 +296,12 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
   text back, with Copy and Download .txt. It runs on the built-in speech-to-text or on a
   Whisper server elsewhere on the network (see [Speech-to-text](#speech-to-text)); any
   language, automatic by default. The browser decodes the audio, so m4a, webm and mp4 work too.
-- **Settings:** which engines run, and GPU memory. **Unload** frees one GPU engine's
-  memory (Chatterbox, OmniVoice, Higgs, QwenTTS-he, Magpie, F5-TTS), **Free GPU memory** frees all of them,
-  and engines unused for a while (30 minutes by default; can be changed or turned off) unload
-  by themselves. An unloaded engine stays in the voice list and loads again on its next
-  reading, which takes 10 to 60 seconds. An engine that is reading isn't unloaded.
+- **Settings:** which engines run, and GPU memory. GPU engines (Chatterbox, OmniVoice, Higgs,
+  QwenTTS-he, Magpie, F5-TTS, VibeVoice) start unloaded, and choosing a voice loads its engine.
+  **Unload** frees one engine's memory, **Free GPU memory** frees all of them, and engines
+  unused for a while (30 minutes by default; can be changed or turned off) unload by
+  themselves. An unloaded engine stays in the voice list; API requests load it too. Loading
+  takes 10 to 60 seconds (VibeVoice 7B about 3 minutes). An engine that is reading isn't unloaded.
 - **Advanced** (under the Read settings): the pause between sentences, and the selected
   engine's own settings, such as quality steps, text adherence, variation, a seed (the same
   number gives the same reading again), Kokoro's blend with Shaul, OmniVoice's voice design
