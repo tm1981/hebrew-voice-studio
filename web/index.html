@@ -157,7 +157,6 @@
   .editor-foot { display: flex; justify-content: space-between; gap: 16px; color: var(--faint); font-size: 12px; }
   .editor-foot span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .settings { padding: 18px; display: flex; flex-direction: column; gap: 16px; align-self: start; position: sticky; top: 0; }
-  .engine-tag { color: var(--accent); font-size: 12px; }
   .divider { height: 1px; background: var(--line); margin: 2px 0; }
   details.advanced summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; display: flex; align-items: center; gap: 6px; }
   details.advanced summary::-webkit-details-marker { display: none; }
@@ -182,6 +181,10 @@
   .lib-row .snippet { font: 400 18px/1.5 var(--read); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lib-row .sub { color: var(--muted); font-size: 12.5px; }
   .lib-row .play-sm { border-radius: 50%; }
+  .lib-check { width: 17px; height: 17px; flex: none; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .lib-bulk { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .lib-bulk[hidden] { display: none; }
+  .lib-bulk label { display: inline-flex; align-items: center; gap: 12px; cursor: pointer; }
   .tag { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--raised); color: var(--muted); font-size: 11.5px; margin-inline-end: 6px; }
   .tag.accent { background: var(--accent-soft); color: var(--accent); }
   .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
@@ -401,11 +404,15 @@
           </div>
         </div>
         <div class="field">
-          <label for="voice"><span data-i18n="voice"></span><span class="engine-tag" id="engineTag"></span></label>
-          <select id="voice"></select>
+          <label for="engine" data-i18n="voiceEngine"></label>
+          <select id="engine"></select>
           <p class="hint" id="hebrewOnlyHint" data-i18n="hebrewOnlyHint" hidden></p>
           <p class="hint" id="oneLanguageHint" data-i18n="oneLanguageHint" hidden></p>
           <p class="hint" id="englishOnlyHint" data-i18n="englishOnlyHint" hidden></p>
+        </div>
+        <div class="field">
+          <label for="voice" data-i18n="voice"></label>
+          <select id="voice"></select>
         </div>
         <div class="field">
           <label for="speed"><span data-i18n="speed"></span><output id="speedOut">1.00×</output></label>
@@ -443,7 +450,15 @@
     <section class="view" data-view="library" hidden>
       <div class="view-head"><div><h1 data-i18n="nav.library"></h1><p data-i18n="libraryHelp"></p></div></div>
       <div class="toolbar"><input type="search" id="libSearch" data-i18n-placeholder="search"></div>
-      <div class="panel"><ul class="list" id="history"></ul></div>
+      <div class="panel">
+        <div class="lib-bulk" id="libBulk" hidden>
+          <label><input type="checkbox" class="lib-check" id="libAll"><span data-i18n="selectAll"></span></label>
+          <span class="muted small" id="libChosen"></span>
+          <span class="spacer"></span>
+          <button type="button" class="btn danger" id="libDelete" data-i18n="deleteSelected" hidden></button>
+        </div>
+        <ul class="list" id="history"></ul>
+      </div>
     </section>
 
     <!-- Long documents -->
@@ -682,7 +697,7 @@ const STR = {
     preset: "Preset", presetNone: "No preset", savePreset: "Save current settings as a preset", deletePreset: "Delete this preset",
     presetPrompt: "Name for these settings, e.g. News or Audiobook", presetLoaded: "Loaded the preset “{name}”.",
     presetSaved: "Saved as “{name}”.", presetDeleteConfirm: "Delete the preset “{name}”?",
-    voice: "Voice", speed: "Speed", speedHint: "Changes the pace without changing the pitch", format: "File format",
+    voice: "Voice", voiceEngine: "Engine", speed: "Speed", speedHint: "Changes the pace without changing the pitch", format: "File format",
     normalize: "Numbers, dates and abbreviations as words", useCache: "Reuse an earlier identical reading",
     dialogue: "Dialogue: a voice per speaker", noSpeakers: "No lines like “Name: text” found yet.",
     advanced: "Advanced",
@@ -737,7 +752,9 @@ const STR = {
     libraryHelp: "Every reading is saved here on the server, so it's still here after a refresh or a restart.",
     search: "Search the library", libEmpty: "Readings you make show up here.", noMatch: "Nothing matches “{q}”.",
     "kind.dialogue": "Dialogue", "kind.chapter": "Chapter", deleteItemConfirm: "Delete this reading from the library?",
-    deleteItem: "Delete from library", seconds: "{n}s", sentenceCount: "{n} sentences",
+    deleteItem: "Delete from library", selectAll: "Select all", selectItem: "Select this reading",
+    selectedCount: "{n} selected", deleteSelected: "Delete selected", deleteItemsConfirm: "Delete {n} readings from the library? This can't be undone.",
+    itemsDeleted: "Deleted {n} readings.", itemsDeletedSome: "Deleted {n} readings; {f} could not be deleted.", seconds: "{n}s", sentenceCount: "{n} sentences",
     docHelp: "A TXT, DOCX or PDF file is read chapter by chapter in the background. Headings like “Chapter 3” or “פרק 3” start a new chapter; without headings the text is split into parts of about 3,000 characters. Every chapter is added to the library.",
     docPick: "Choose a TXT, DOCX or PDF file", docUses: "Read with the voice and settings from the Read screen: {voice}, {speed}×.",
     docStart: "Read the document", docNeedFile: "Choose a TXT, DOCX or PDF file.", docStartFailed: "Couldn't start reading the document.",
@@ -862,7 +879,7 @@ const STR = {
     preset: "הגדרות שמורות", presetNone: "ללא", savePreset: "שמירת ההגדרות הנוכחיות", deletePreset: "מחיקת ההגדרות השמורות",
     presetPrompt: "שם להגדרות האלה, למשל: חדשות או ספר שמע", presetLoaded: "ההגדרות \"{name}\" נטענו.",
     presetSaved: "ההגדרות נשמרו בשם \"{name}\".", presetDeleteConfirm: "למחוק את ההגדרות \"{name}\"?",
-    voice: "קול", speed: "מהירות", speedHint: "משנה מהירות בלי לשנות את גובה הקול", format: "פורמט קובץ",
+    voice: "קול", voiceEngine: "מנוע", speed: "מהירות", speedHint: "משנה מהירות בלי לשנות את גובה הקול", format: "פורמט קובץ",
     normalize: "מספרים, תאריכים וקיצורים למילים", useCache: "להשמיע הקראה קודמת זהה",
     dialogue: "דיאלוג: קול לכל דובר", noSpeakers: "עוד לא נמצאו שורות בצורה \"שם: טקסט\".",
     advanced: "מתקדם",
@@ -917,7 +934,9 @@ const STR = {
     libraryHelp: "כל הקראה נשמרת כאן בשרת, ונשארת גם אחרי רענון הדף או הפעלה מחדש.",
     search: "חיפוש בספרייה", libEmpty: "ההקראות שתיצרו יופיעו כאן.", noMatch: "אין תוצאות עבור \"{q}\".",
     "kind.dialogue": "דיאלוג", "kind.chapter": "פרק", deleteItemConfirm: "למחוק את ההקראה מהספרייה?",
-    deleteItem: "מחיקה מהספרייה", seconds: "{n} שנ׳", sentenceCount: "{n} משפטים",
+    deleteItem: "מחיקה מהספרייה", selectAll: "בחירת הכול", selectItem: "בחירת ההקראה",
+    selectedCount: "{n} נבחרו", deleteSelected: "מחיקת הנבחרים", deleteItemsConfirm: "למחוק {n} הקראות מהספרייה? אי אפשר לבטל את זה.",
+    itemsDeleted: "נמחקו {n} הקראות.", itemsDeletedSome: "נמחקו {n} הקראות; {f} לא נמחקו.", seconds: "{n} שנ׳", sentenceCount: "{n} משפטים",
     docHelp: "קובץ TXT, DOCX או PDF יוקרא פרק אחר פרק ברקע. כותרות כמו \"פרק 3\" מתחילות פרק חדש; בלי כותרות, הטקסט מחולק לחלקים של כ-3,000 תווים. כל פרק נוסף לספרייה.",
     docPick: "בחירת קובץ TXT, DOCX או PDF", docUses: "יוקרא בקול ובהגדרות של מסך ההקראה: {voice}, מהירות {speed}×.",
     docStart: "הקראת המסמך", docNeedFile: "בחרו קובץ TXT, DOCX או PDF.", docStartFailed: "לא ניתן להתחיל את ההקראה.",
@@ -1680,7 +1699,7 @@ function renderEngineOptions() {
 api("/options").then(r => r.json()).then(d => { optionSpecs = d; renderEngineOptions(); }).catch(() => {});
 
 // ---------- Voices: ids are "<engine>/<name>" ----------
-const voiceSel = $("voice");
+const voiceSel = $("voice"), engineSel = $("engine");
 const FAST_ENGINES = new Set(["lightblue", "blue25", "kokoro"]);
 // Looked up by voice id first (names can repeat across engines), then by name.
 const VOICE_LABELS = {
@@ -1712,22 +1731,26 @@ const engines = () => [...new Set(voices.map(v => v.engine))];
 function renderVoices(list, select) {
   voices = list;
   const keep = select ?? voiceSel.value ?? storage.get("kol-voice");
-  voiceSel.innerHTML = "";
-  for (const engine of engines()) {
-    const group = document.createElement("optgroup");
-    group.label = engineLabel(voices.find(v => v.engine === engine));
-    for (const v of voices.filter(v => v.engine === engine)) group.append(new Option(voiceLabel(v), v.id));
-    voiceSel.append(group);
-  }
+  engineSel.innerHTML = "";
+  for (const engine of engines()) engineSel.append(new Option(engineLabel(voices.find(v => v.engine === engine)), engine));
   const ids = voices.map(v => v.id), saved = storage.get("kol-voice");
-  voiceSel.value = ids.includes(keep) ? keep : ids.includes(saved) ? saved : ids.includes("lightblue/noa") ? "lightblue/noa" : ids[0];
+  chooseVoice(ids.includes(keep) ? keep : ids.includes(saved) ? saved : ids.includes("lightblue/noa") ? "lightblue/noa" : ids[0]);
   onVoiceChange();
   if ($("dialogue").checked) refreshSpeakers();
+}
+// The voice box lists one engine's voices, so a voice from another engine has to go through here.
+function chooseVoice(id) {
+  const engine = voices.find(v => v.id === id)?.engine;
+  if (!engine) return;
+  engineSel.value = engine;
+  voiceSel.innerHTML = "";
+  for (const v of voices.filter(v => v.engine === engine)) voiceSel.append(new Option(voiceLabel(v), v.id));
+  voiceSel.value = id;
 }
 function onVoiceChange() {
   const v = selectedVoice();
   storage.set("kol-voice", v.id);
-  $("engineTag").textContent = v.engine_label || "";
+  storage.set(`kol-voice-${v.engine}`, v.id);
   $("hebrewOnlyHint").hidden = !v.hebrew_only;
   $("oneLanguageHint").hidden = !v.one_language;
   $("englishOnlyHint").hidden = !v.english_only;
@@ -1737,6 +1760,12 @@ function onVoiceChange() {
   if (!niqqudEl.hidden) showNiqqud(true);
 }
 voiceSel.addEventListener("change", () => { onVoiceChange(); loadSelectedEngine(); });
+engineSel.addEventListener("change", () => {
+  const list = voices.filter(v => v.engine === engineSel.value), saved = storage.get(`kol-voice-${engineSel.value}`);
+  chooseVoice(list.some(v => v.id === saved) ? saved : list[0].id);  // the voice used last on this engine
+  onVoiceChange();
+  loadSelectedEngine();
+});
 api("/voices").then(r => r.json()).then(list => { renderVoices(list); refreshLibrary(); }).catch(() => refreshLibrary());
 
 // The Voices screen: every engine's voices, with "Use" and (for your own voices) delete.
@@ -1755,7 +1784,7 @@ function renderVoiceList() {
       const use = document.createElement("button");
       use.type = "button"; use.className = "btn" + (chosen ? " primary" : "");
       use.textContent = chosen ? t("inUse") : t("use");
-      use.addEventListener("click", () => { voiceSel.value = v.id; onVoiceChange(); loadSelectedEngine(); go("read"); });
+      use.addEventListener("click", () => { chooseVoice(v.id); onVoiceChange(); loadSelectedEngine(); go("read"); });
       li.append(use);
       if (!v.builtin) {
         const edit = document.createElement("button");
@@ -1850,7 +1879,7 @@ function currentSettings() {
   return s;
 }
 function applySettings(s) {
-  if (s.voice && voices.some(v => v.id === s.voice)) voiceSel.value = s.voice;
+  if (s.voice) chooseVoice(s.voice);
   for (const id of PRESET_FIELDS) if (s[id] != null) { $(id).value = s[id]; $(id + "Out").textContent = fmt(id, s[id]); }
   // presets saved before per-engine settings kept Chatterbox's sliders and Zonos's emotion at the top level
   const opts = s.options ? JSON.parse(JSON.stringify(s.options)) : {};
@@ -1909,9 +1938,8 @@ async function refreshSpeakers() {
   for (const name of speakers) {
     const label = document.createElement("label"), span = document.createElement("span");
     span.textContent = name;
-    const sel = voiceSel.cloneNode(true);
-    sel.removeAttribute("id");
-    sel.value = speakerVoices[name] || voiceSel.value;
+    const sel = document.createElement("select");  // speakers can use voices from any engine
+    fillVoiceSelect(sel, speakerVoices[name] || voiceSel.value);
     sel.addEventListener("change", () => speakerVoices[name] = sel.value);
     speakerVoices[name] = sel.value;
     label.append(span, sel);
@@ -2313,6 +2341,34 @@ function voiceText(id) {
   const v = voices.find(v => v.id === id);
   return v ? `${voiceLabel(v)} · ${v.engine_label}` : (id || "");
 }
+const libSelected = new Set();  // ids ticked in the library; only readings on screen stay ticked
+function renderLibBulk(items) {
+  const n = libSelected.size;
+  $("libBulk").hidden = !items.length;
+  $("libAll").checked = n > 0 && n === items.length;
+  $("libAll").indeterminate = n > 0 && n < items.length;
+  $("libChosen").textContent = n ? t("selectedCount", { n }) : "";
+  $("libDelete").hidden = !n;
+}
+async function deleteSelected() {
+  const ids = [...libSelected];
+  if (!ids.length || !confirm(t("deleteItemsConfirm", { n: ids.length }))) return;
+  $("libDelete").disabled = true;
+  let deleted = 0;
+  for (const id of ids) {
+    try {
+      if ((await api(`/library/${id}`, { method: "DELETE" })).ok) {
+        deleted++;
+        libSelected.delete(id);
+        if (current?.meta.id === id) clearPlayer();
+      }
+    } catch { /* counted below */ }
+  }
+  $("libDelete").disabled = false;
+  const failed = ids.length - deleted;
+  setStatus(t(failed ? "itemsDeletedSome" : "itemsDeleted", { n: deleted, f: failed }), failed > 0);
+  await refreshLibrary();
+}
 async function refreshLibrary() {
   try { libraryItems = await (await api("/library")).json(); } catch { return; }
   renderHistory();
@@ -2321,6 +2377,8 @@ function renderHistory() {
   const list = $("history"), q = $("libSearch").value.trim();
   $("libCount").textContent = libraryItems.length || "";
   const items = q ? libraryItems.filter(i => `${i.title || ""} ${i.text || ""}`.includes(q)) : libraryItems;
+  for (const id of [...libSelected]) if (!items.some(i => i.id === id)) libSelected.delete(id);
+  renderLibBulk(items);
   if (!items.length) {
     list.innerHTML = `<li class="empty"></li>`;
     list.firstChild.textContent = q ? t("noMatch", { q }) : t("libEmpty");
@@ -2333,13 +2391,19 @@ function renderHistory() {
     li.className = "lib-row";
     li.setAttribute("aria-current", item.id === current?.meta.id);
     const kind = { dialogue: "kind.dialogue", chapter: "kind.chapter" }[item.kind];
-    li.innerHTML = `<button type="button" class="btn icon-btn play-sm"><svg><use href="#i-play"/></svg></button>
+    li.innerHTML = `<input type="checkbox" class="lib-check"><button type="button" class="btn icon-btn play-sm"><svg><use href="#i-play"/></svg></button>
       <div class="grow"><div class="snippet" dir="auto"></div>
         <div class="sub">${kind ? `<span class="tag accent">${t(kind)}</span>` : ""}${escapeHtml(voiceText(item.voice))} · ${secs(item.audio_seconds || 0)} · ${t("sentenceCount", { n: item.sentences ?? 0 })} · ${item.created ? dateFmt.format(item.created * 1000) : ""}</div></div>
       <a class="btn icon-btn actions-wide"><svg><use href="#i-download"/></svg></a>
       <button type="button" class="btn icon-btn danger"><svg><use href="#i-trash"/></svg></button>`;
     li.querySelector(".snippet").textContent = item.kind === "chapter" ? item.title : item.text;
-    const [play, del] = li.querySelectorAll("button");
+    const [play, del] = li.querySelectorAll("button"), check = li.querySelector(".lib-check");
+    check.checked = libSelected.has(item.id);
+    check.setAttribute("aria-label", t("selectItem"));
+    check.addEventListener("change", () => {
+      check.checked ? libSelected.add(item.id) : libSelected.delete(item.id);
+      renderLibBulk(items);
+    });
     play.setAttribute("aria-label", t("play"));
     play.addEventListener("click", () => openItem(item.id, { autoplay: true }).catch(e => setStatus(errorText(e), true)));
     li.querySelector(".snippet").addEventListener("click", () => play.click());
@@ -2351,6 +2415,7 @@ function renderHistory() {
     del.addEventListener("click", async () => {
       if (!confirm(t("deleteItemConfirm"))) return;
       await api(`/library/${item.id}`, { method: "DELETE" });
+      libSelected.delete(item.id);
       if (current?.meta.id === item.id) clearPlayer();
       refreshLibrary();
     });
@@ -2367,6 +2432,11 @@ function clearPlayer() {
   updateNow(); draw();
 }
 $("libSearch").addEventListener("input", renderHistory);
+$("libAll").addEventListener("change", () => {
+  const on = $("libAll").checked;  // ticking a row redraws this box
+  document.querySelectorAll("#history .lib-check").forEach(c => { c.checked = on; c.dispatchEvent(new Event("change")); });
+});
+$("libDelete").addEventListener("click", deleteSelected);
 $("format").addEventListener("change", () => {
   if (current) $("download").href = withKey(`/library/${current.meta.id}/audio?format=${format()}`);
   renderHistory();
