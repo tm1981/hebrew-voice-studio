@@ -23,13 +23,16 @@ a cloud service.
 | **QwenTTS-he** (Qwen3-TTS 1.7B + Hebrew adapter) | GPU, worker process (env `qwentts`) | female, male | yes (good) | Clearest in testing; about 8x real time. |
 | **Magpie-TTS Hebrew** (NVIDIA Magpie 357M + Hebrew fine-tune) | GPU, worker process (env `magpie`) | 15 Hebrew voices (female1-5, male1-5, voice1-3, female1-he, male1-he) | no | Very clear (98-99% of words heard in testing); about 1.4x real time, 22 kHz. |
 | **F5-TTS Hebrew** (F5-TTS + Hebrew fine-tune) | GPU, worker process (env `f5`) | your recorded voices only | yes | Clear (no words added or dropped in 30 test sentences); about 2.5x real time, 24 kHz. Needs at least one recorded voice. |
-| **VibeVoice 1.5B / 7B** (Microsoft) | GPU, worker process (env `omnivoice`) | alice, carter, frank, maya, samuel | yes (no transcript needed) | **English only.** Long-form, natural English; about real time (1.5B). Starts unloaded: the first reading loads it (1.5B: about 7 GB of GPU memory, 7B: about 19 GB). |
+| **VibeVoice 1.5B / 7B** (Microsoft) | GPU, worker process (env `omnivoice`) | alice, carter, frank, maya, samuel | yes (no transcript needed) | **English first.** Long-form, natural English; Hebrew with an English accent; about real time (1.5B). Starts unloaded: the first reading loads it (1.5B: about 7 GB of GPU memory, 7B: about 19 GB). |
 | **Zonos-Hebrew** | GPU, Docker on another machine | default | yes | Optional, off by default. Hebrew only; has emotions. |
 
 English words inside Hebrew text, and English-only text, are read by every engine except
 F5-TTS and Zonos, which read Hebrew only (the app marks them "Hebrew only"). Kokoro and Magpie
-read English with their Hebrew voices, so with a Hebrew accent. VibeVoice is the reverse: it
-reads English only (marked "English only"), and Hebrew comes out as nonsense.
+read English with their Hebrew voices, so with a Hebrew accent. VibeVoice is the reverse
+(marked "English first"): Hebrew comes out with an English accent and some words added or
+dropped. It does best on the 7B model with a clean recording of a Hebrew speaker, and worse with
+niqqud or romanized text. Some takes come out with sound behind the voice, so a noisy take is
+read again, up to 3 times; turn this off in Advanced for readings about twice as fast.
 
 Every engine is optional at runtime: one that fails to load is skipped, and the server
 runs with the rest.

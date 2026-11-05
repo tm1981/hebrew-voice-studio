@@ -74,7 +74,7 @@ class HiggsBackend:
             self.codes[voice] = self.model._encode_reference(wav, sr).cpu()
         return self.codes[voice]
 
-    def synthesize(self, text: str, voice: str, speed: float, temperature=1.0, top_p=0.95, top_k=50, seed=None, **_):
+    def synthesize(self, text: str, voice: str, speed: float, temperature=0.8, top_p=0.95, top_k=50, seed=None, **_):
         if seed is not None:
             torch.manual_seed(int(seed))
         kw = dict(reference_codes=self._reference(voice), max_new_tokens=2048, temperature=max(0.05, float(temperature)),

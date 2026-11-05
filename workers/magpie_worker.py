@@ -74,11 +74,16 @@ class MagpieBackend:
         self.builtin_voices = set(self.voices)
         self.synthesize("שלום, מה שלומך היום?", next(iter(self.voices)), 1.0)  # warm-up
 
-    def synthesize(self, text: str, voice: str, speed: float, temperature=0.7, top_k=80, guidance=2.5, seed=None, **_):
+    def synthesize(self, text: str, voice: str, speed: float, temperature=0.6, top_k=80, guidance=2.5, seed=None, **_):
         params = self.model.inference_parameters
         params.temperature, params.topk, params.cfg_scale = temperature, top_k, guidance
         if seed is not None:
             torch.manual_seed(seed)
+        # Without a closing mark the model has no cue to end the sentence. Whisper, 2 voices x 20
+        # sentences, one word misheard: 7/40 -> 4/40.
+        text = text.rstrip()
+        if text and text[-1] not in ".?!…:;,":
+            text += "."
         if LATIN_RUN.search(text):
             return self._synthesize_mixed(text, self.voices[voice])
         with torch.inference_mode():

@@ -105,6 +105,7 @@
   .icon-btn { width: 34px; height: 34px; padding: 0; flex: none; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > label, .label { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .opt-off { opacity: .45; }
   .field output { color: var(--ink); font-variant-numeric: tabular-nums; direction: ltr; }
   .hint { margin: 0; font-size: 12px; color: var(--faint); }
   .error-text { color: var(--error); }
@@ -681,7 +682,10 @@ const STR = {
     advanced: "Advanced",
     sentencePause: "Pause between sentences", sentencePauseHint: "Silence between sentences, in seconds",
     "opt.exaggeration": "Expression", "opt.exaggeration.hint": "Low for a flat read, high for a dramatic one",
-    "opt.cfg_weight": "Voice adherence", "opt.cfg_weight.hint": "Low for a calmer read, high to stay closer to the voice",
+    "opt.cfg_weight": "Pace", "opt.cfg_weight.hint": "Lower reads slower. Set it to 0 if a recording in another language leaves an accent",
+    "opt.denoise": "Clean sound", "opt.denoise.hint": "For your own voices: asks for clean speech even if the recording has noise",
+    "opt.retake": "Retake background sound", "opt.retake.hint": "Reads again, up to 3 times, when a take has sound behind the voice. Off is about twice as fast",
+    "opt.postprocess": "Shorten long silences", "opt.postprocess.hint": "Off keeps the pauses as they came out",
     "opt.temperature": "Variation", "opt.temperature.hint": "Higher sounds livelier but may add or skip words",
     "opt.chatterbox.temperature.hint": "Above 0.6 the model may add words that aren't in the text",
     "opt.qwen.temperature": "Temperature", "opt.qwen.temperature.hint": "With Variation on: higher is livelier, lower is steadier",
@@ -736,7 +740,7 @@ const STR = {
     stop: "Stop", zip: "Download all chapters (ZIP)",
     voicesHelp: "The built-in voices of every engine, plus voices you add. A voice you add is cloned by every engine that can clone.",
     builtin: "Built-in", custom: "Your voice", use: "Use", inUse: "Selected", fast: "fast", hebrewOnly: "Hebrew only", hebrewOnlyHint: "This engine reads Hebrew only: English words in the text will come out wrong.",
-    englishOnly: "English only", englishOnlyHint: "This engine reads English only: Hebrew in the text will come out wrong. Its first reading loads the model, which takes a minute or more.",
+    englishOnly: "English first", englishOnlyHint: "Made for English. It reads Hebrew with an English accent and sometimes drops or adds words; 7B with a recording of a Hebrew speaker does this best. Don't add niqqud. Its first reading loads the model, which takes a minute or more.",
     deleteVoiceConfirm: "Delete the voice “{name}” from all engines?", voiceDeleted: "The voice “{name}” was deleted.",
     cantDelete: "Couldn't delete the voice.", deleteVoice: "Delete the voice {name}", voiceCount: "{n} voices",
     editVoice: "Edit the voice {name}", downloadVoice: "Download the recordings of {name}", editTitle: "Edit a voice",
@@ -857,7 +861,10 @@ const STR = {
     advanced: "מתקדם",
     sentencePause: "הפסקה בין משפטים", sentencePauseHint: "שקט בין משפט למשפט, בשניות",
     "opt.exaggeration": "הבעה", "opt.exaggeration.hint": "נמוך לקריאה שטוחה, גבוה לדרמטית",
-    "opt.cfg_weight": "היצמדות לקול", "opt.cfg_weight.hint": "נמוך לקריאה רגועה יותר, גבוה לנאמנות לקול הנבחר",
+    "opt.cfg_weight": "קצב", "opt.cfg_weight.hint": "נמוך קורא לאט יותר. אפשר 0 אם הקלטה בשפה אחרת משאירה מבטא",
+    "opt.denoise": "צליל נקי", "opt.denoise.hint": "לקולות שלכם: מבקש דיבור נקי גם אם יש רעש בהקלטה",
+    "opt.retake": "הקראה חוזרת מרעש רקע", "opt.retake.hint": "קורא שוב, עד 3 פעמים, כשיש צליל מאחורי הקול. כבוי מהיר בערך פי שניים",
+    "opt.postprocess": "קיצור שתיקות ארוכות", "opt.postprocess.hint": "כבוי משאיר את ההפסקות כמו שיצאו",
     "opt.temperature": "גיוון", "opt.temperature.hint": "גבוה נשמע חי יותר, אבל עלול להוסיף או לדלג על מילים",
     "opt.chatterbox.temperature.hint": "מעל 0.6 המודל עלול להוסיף מילים שלא נכתבו",
     "opt.qwen.temperature": "טמפרטורה", "opt.qwen.temperature.hint": "כשגיוון דלוק: גבוה חי יותר, נמוך יציב יותר",
@@ -912,7 +919,7 @@ const STR = {
     stop: "עצירה", zip: "הורדת כל הפרקים (ZIP)",
     voicesHelp: "הקולות המובנים של כל מנוע, וגם קולות שהוספתם. קול שתוסיפו ישובט בכל מנוע שיודע לשבט קול.",
     builtin: "מובנה", custom: "קול שלך", use: "בחירה", inUse: "נבחר", fast: "מהיר", hebrewOnly: "עברית בלבד", hebrewOnlyHint: "המנוע הזה קורא עברית בלבד: מילים באנגלית בטקסט ייצאו משובשות.",
-    englishOnly: "אנגלית בלבד", englishOnlyHint: "המנוע הזה קורא אנגלית בלבד: עברית בטקסט תצא משובשת. ההקראה הראשונה טוענת את המודל, וזה לוקח דקה או יותר.",
+    englishOnly: "בעיקר אנגלית", englishOnlyHint: "נבנה לאנגלית. הוא קורא עברית במבטא אנגלי ולפעמים משמיט או מוסיף מילים; הכי טוב עם 7B והקלטה של דובר עברית. בלי ניקוד. ההקראה הראשונה טוענת את המודל, וזה לוקח דקה או יותר.",
     deleteVoiceConfirm: "למחוק את הקול \"{name}\" מכל המנועים?", voiceDeleted: "הקול \"{name}\" נמחק.",
     cantDelete: "לא ניתן למחוק את הקול.", deleteVoice: "מחיקת הקול {name}", voiceCount: "{n} קולות",
     editVoice: "עריכת הקול {name}", downloadVoice: "הורדת ההקלטות של {name}", editTitle: "עריכת קול",
@@ -1602,6 +1609,7 @@ function renderEngineOptions() {
   for (const spec of specs) {
     const id = `opt-${spec.key}`, value = values[spec.key] ?? spec.default;
     const field = document.createElement(spec.type === "toggle" ? "label" : "div");
+    const off = spec.needs && !(values[spec.needs] ?? specs.find(s => s.key === spec.needs)?.default);
     const hint = optText(engine, spec.key, ".hint");
     const hintHtml = hint !== `opt.${spec.key}.hint` ? `<p class="hint">${escapeHtml(hint)}</p>` : "";
     const label = escapeHtml(optText(engine, spec.key));
@@ -1621,7 +1629,10 @@ function renderEngineOptions() {
     } else if (spec.type === "toggle") {
       field.className = "switch";
       field.innerHTML = `<span>${label}</span><input type="checkbox" id="${id}"${value ? " checked" : ""}>`;
-      field.querySelector("input").addEventListener("change", e => setEngineOpt(engine, spec, e.target.checked));
+      field.querySelector("input").addEventListener("change", e => {
+        setEngineOpt(engine, spec, e.target.checked);
+        if (specs.some(s => s.needs === spec.key)) renderEngineOptions();
+      });
       box.append(field);
       if (hintHtml) box.insertAdjacentHTML("beforeend", hintHtml);
       continue;
@@ -1631,6 +1642,10 @@ function renderEngineOptions() {
         <input type="number" id="${id}" min="0" step="1" placeholder="${escapeHtml(t("seedRandom"))}" value="${value ?? ""}">${hintHtml}`;
       const input = field.querySelector("input");
       input.addEventListener("change", () => setEngineOpt(engine, spec, input.value === "" ? null : Math.max(0, Math.round(+input.value))));
+    }
+    if (off) {
+      field.classList.add("opt-off");
+      field.querySelectorAll("input").forEach(i => i.disabled = true);
     }
     box.append(field);
   }

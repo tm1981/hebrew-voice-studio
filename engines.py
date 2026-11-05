@@ -277,7 +277,7 @@ class ChatterboxEngine(OnDemand):
     name = "chatterbox"
     label = "Chatterbox"
     option_specs = [
-        rng("exaggeration", 0.5, 0.0, 2.0, 0.05),
+        rng("exaggeration", 0.5, 0.25, 2.0, 0.05),  # below 0.25 is outside Chatterbox's own range
         rng("cfg_weight", 0.5, 0.0, 1.0, 0.05),
         rng("temperature", 0.4, 0.1, 1.5, 0.05),
         SEED,
@@ -383,11 +383,13 @@ class LightBlueEngine:
     repo = ROOT / "vendor" / "BlueTTS"
     voices_dir = repo / "voices"
     total_steps = 5
+    pace_blend = None  # the runtime's own choice
+    steps_range = (2, 32)
     cfg_scale = 4.0
 
     @property
     def option_specs(self) -> list[dict]:
-        return [rng("steps", self.total_steps, 2, 32, 1), rng("guidance", self.cfg_scale, 1.0, 8.0, 0.5), SEED]
+        return [rng("steps", self.total_steps, *self.steps_range, 1), rng("guidance", self.cfg_scale, 1.0, 8.0, 0.5), SEED]
 
     onnx_source = "blue-onnx-v2"  # model_files.SOURCES key for onnx_dir
 
@@ -512,6 +514,7 @@ class LightBlueEngine:
             total_step=steps,
             cfg_scale=guidance,
             speed=speed,
+            pace_blend=self.pace_blend,
             silence_duration=PAUSE_SECONDS,
         )
         return audio
@@ -538,6 +541,7 @@ class BlueTTS25Engine(LightBlueEngine):
     onnx_source = "bluetts-2.5"
     voices_dir = onnx_dir / "voices"
     total_steps = 16  # the bundle's documented settings
+    steps_range = (5, 16)  # as its own demo
     cfg_scale = 3.0
     max_ref_frames = 150  # what the runtime gives reference_encoder (~10 s)
     # The duration model gives a sentence nearly the same length for every voice (within 2%,
@@ -545,6 +549,9 @@ class BlueTTS25Engine(LightBlueEngine):
     # got squeezed or dropped. Whisper, 4 cloned voices x 8 sentences: last word wrong 5/32 at
     # 1.0, 5/32 at 1.15, 0/32 at 1.25 (words heard 89-98% -> 98-100%). The tail trim was not it.
     clone_duration_scale = 1.25
+    # As the bundle's own demo: long sentences rush without it. Whisper, 4 voices x 20 sentences:
+    # words added or dropped in 3/80 -> 0/80, a word misheard in 4/80 -> 2/80.
+    pace_blend = 0.30
 
     def __init__(self):
         self._fetch_models()  # the stats below come from the bundle
@@ -752,20 +759,24 @@ OMNIVOICE_PITCHES = ["", "very low pitch", "low pitch", "moderate pitch", "high 
 OMNIVOICE_ACCENTS = ["", "american accent", "british accent", "australian accent", "canadian accent", "indian accent",
                      "russian accent", "chinese accent", "japanese accent", "korean accent", "portuguese accent"]
 WORKER_OPTIONS = {
-    # design_*: words OmniVoice accepts for its designed voices (female, male); clones ignore them
+    # design_*: words OmniVoice accepts as its instruct, for designed voices and clones
     # steps below 16 cut sentence endings; F5 sway at -0.3 or above garbles speech (Whisper)
     "omnivoice": [rng("steps", 32, 16, 64, 4), rng("guidance", 2.0, 0.0, 4.0, 0.1), SEED,
+                  toggle("denoise", True), toggle("postprocess", True),
                   choice("design_age", OMNIVOICE_AGES), choice("design_pitch", OMNIVOICE_PITCHES),
                   toggle("design_whisper"), choice("design_accent", OMNIVOICE_ACCENTS)],
-    "higgs": [rng("temperature", 1.0, 0.1, 1.5, 0.05), rng("top_p", 0.95, 0.5, 1.0, 0.01),
+    "higgs": [rng("temperature", 0.8, 0.1, 1.5, 0.05), rng("top_p", 0.95, 0.5, 1.0, 0.01),
               rng("top_k", 50, 0, 200, 5), SEED],
     # sampling off is the adapter card's greedy decoding (and the fast CUDA-graph path)
-    "qwen": [toggle("sampling"), rng("temperature", 0.9, 0.1, 1.5, 0.05), rng("top_p", 1.0, 0.5, 1.0, 0.01),
-             rng("repetition_penalty", 1.0, 1.0, 1.5, 0.05), SEED],
-    "magpie": [rng("temperature", 0.7, 0.1, 1.5, 0.05), rng("top_k", 80, 1, 200, 1),
+    # needs: only works with that toggle on (the UI greys it out otherwise)
+    "qwen": [toggle("sampling"), {**rng("temperature", 0.9, 0.1, 1.5, 0.05), "needs": "sampling"},
+             {**rng("top_p", 1.0, 0.5, 1.0, 0.01), "needs": "sampling"},
+             rng("repetition_penalty", 1.0, 1.0, 1.5, 0.05), {**SEED, "needs": "sampling"}],
+    # temperature: the checkpoint's own 0.6
+    "magpie": [rng("temperature", 0.6, 0.1, 1.5, 0.05), rng("top_k", 80, 1, 200, 1),
                rng("guidance", 2.5, 1.0, 5.0, 0.1), SEED],
-    "f5": [rng("steps", 32, 8, 64, 4), rng("guidance", 2.0, 0.0, 5.0, 0.1), rng("sway", -1.0, -1.0, -0.5, 0.1), SEED],
-    "vibevoice": [rng("guidance", 1.3, 1.0, 3.0, 0.05), rng("steps", 10, 5, 30, 1), SEED],
+    "f5": [rng("steps", 32, 16, 64, 4), rng("guidance", 2.0, 1.0, 3.0, 0.1), rng("sway", -1.0, -1.0, -0.5, 0.1), SEED],
+    "vibevoice": [rng("guidance", 1.3, 1.0, 1.4, 0.05), rng("steps", 10, 5, 30, 1), SEED, toggle("retake", True)],
 }
 WORKER_OPTIONS["vibevoice7b"] = WORKER_OPTIONS["vibevoice"]
 
@@ -781,7 +792,7 @@ class RemoteEngine(OnDemand):
 
     uses_niqqud = False  # these models read the text as-is; there's no niqqud step to preview
     HEBREW_ONLY = {"f5"}  # Whisper heard nonsense for English ("This is Tomahawk...")
-    ENGLISH_ONLY = {"vibevoice", "vibevoice7b"}  # trained on English and Chinese
+    ENGLISH_ONLY = {"vibevoice", "vibevoice7b"}  # trained on English and Chinese, Hebrew is accented
 
     def __init__(self, name: str, label: str, env: str, script: str, port: int, startup_timeout: float, info: dict):
         """info: what the worker's /info will say, to list the engine before it loads."""

@@ -93,7 +93,8 @@ class QwenBackend:
         generate, which is several times slower."""
         settings = dict(GENERATE, repetition_penalty=repetition_penalty)
         if sampling:
-            settings.update(do_sample=True, subtalker_dosample=True, temperature=temperature, top_p=top_p)
+            settings.update(do_sample=True, subtalker_dosample=True, temperature=temperature, top_p=top_p,
+                            subtalker_temperature=temperature, subtalker_top_p=top_p)  # most codebooks are the subtalker's
         if seed is not None:
             torch.manual_seed(seed)
         wavs, self.sample_rate = self.tts.generate_voice_clone(

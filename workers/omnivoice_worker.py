@@ -103,22 +103,25 @@ class OmniVoiceBackend:
     def remove_voice(self, name: str):
         self.voices.pop(name, None)
 
-    def synthesize(self, text: str, voice: str, speed: float, steps=32, guidance=2.0, seed=None,
-                   design_age="", design_pitch="", design_whisper=False, design_accent="", **_):
+    def synthesize(self, text: str, voice: str, speed: float, steps=32, guidance=2.0, seed=None, denoise=True,
+                   postprocess=True, design_age="", design_pitch="", design_whisper=False, design_accent="", **_):
         from omnivoice.models.omnivoice import OmniVoiceGenerationConfig
 
         entry = self.voices[voice]
         kwargs = {"text": text, "language": "he", "speed": speed,
-                  "generation_config": OmniVoiceGenerationConfig(num_step=steps, guidance_scale=guidance)}
+                  "generation_config": OmniVoiceGenerationConfig(num_step=steps, guidance_scale=guidance, denoise=denoise,
+                                                                 postprocess_output=postprocess)}
+        design = [w for w in (design_age, design_pitch, design_accent) if w] + (["whisper"] if design_whisper else [])
         if voice in DESIGNED_VOICES:
             instruct, voice_seed = entry
             # extra design words replace the voice's own pitch word (one per category)
             words = [w for w in instruct.split(", ") if not (design_pitch and w.endswith("pitch"))]
-            words += [w for w in (design_age, design_pitch, design_accent) if w] + (["whisper"] if design_whisper else [])
-            kwargs["instruct"] = ", ".join(words)
+            kwargs["instruct"] = ", ".join(words + design)
             torch.manual_seed(voice_seed if seed is None else seed)
         else:
             kwargs["voice_clone_prompt"] = entry
+            if design:
+                kwargs["instruct"] = ", ".join(design)
             if seed is not None:
                 torch.manual_seed(seed)
         try:
