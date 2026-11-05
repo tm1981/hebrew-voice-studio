@@ -50,6 +50,10 @@
   .chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 99px; background: var(--surface); color: var(--muted); font-size: 12.5px; white-space: nowrap; border: 1px solid var(--line); }
   button.chip { cursor: pointer; }
   button.chip:hover { color: var(--ink); border-color: var(--line-strong); }
+  .gpu-bar { width: 72px; height: 5px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .gpu-bar span { display: block; height: 100%; background: var(--accent); transition: width .4s; }
+  .gpu-bar span.full { background: var(--error); }
+  @media (max-width: 760px) { .gpu-chip { display: none; } }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
   .dot.ok { background: var(--ok); }
   .dot.down { background: var(--error); }
@@ -338,6 +342,7 @@
   <header class="top">
     <div class="brand"><svg><use href="#i-read"/></svg><span data-i18n="title"></span></div>
     <button type="button" class="chip" id="statusChip" data-go="status"><span class="dot" id="dot"></span><span class="label" id="device"></span></button>
+    <button type="button" class="chip gpu-chip" id="gpuChip" data-go="status" hidden><span class="label" id="gpuText"></span><span class="gpu-bar"><span id="gpuFill"></span></span></button>
     <span class="spacer"></span>
     <div class="fonts-menu">
       <button type="button" class="btn icon-btn" id="fontsBtn" aria-expanded="false" data-i18n-title="fonts">Aa</button>
@@ -399,6 +404,7 @@
           <label for="voice"><span data-i18n="voice"></span><span class="engine-tag" id="engineTag"></span></label>
           <select id="voice"></select>
           <p class="hint" id="hebrewOnlyHint" data-i18n="hebrewOnlyHint" hidden></p>
+          <p class="hint" id="oneLanguageHint" data-i18n="oneLanguageHint" hidden></p>
           <p class="hint" id="englishOnlyHint" data-i18n="englishOnlyHint" hidden></p>
         </div>
         <div class="field">
@@ -740,6 +746,7 @@ const STR = {
     stop: "Stop", zip: "Download all chapters (ZIP)",
     voicesHelp: "The built-in voices of every engine, plus voices you add. A voice you add is cloned by every engine that can clone.",
     builtin: "Built-in", custom: "Your voice", use: "Use", inUse: "Selected", fast: "fast", hebrewOnly: "Hebrew only", hebrewOnlyHint: "This engine reads Hebrew only: English words in the text will come out wrong.",
+    oneLanguage: "Hebrew or English", oneLanguageHint: "Each sentence should be all Hebrew or all English: English words inside a Hebrew sentence will come out wrong. The first English sentence downloads a second model and takes longer.",
     englishOnly: "English first", englishOnlyHint: "Made for English. It reads Hebrew with an English accent and sometimes drops or adds words; 7B with a recording of a Hebrew speaker does this best. Don't add niqqud. Its first reading loads the model, which takes a minute or more.",
     deleteVoiceConfirm: "Delete the voice “{name}” from all engines?", voiceDeleted: "The voice “{name}” was deleted.",
     cantDelete: "Couldn't delete the voice.", deleteVoice: "Delete the voice {name}", voiceCount: "{n} voices",
@@ -919,6 +926,7 @@ const STR = {
     stop: "עצירה", zip: "הורדת כל הפרקים (ZIP)",
     voicesHelp: "הקולות המובנים של כל מנוע, וגם קולות שהוספתם. קול שתוסיפו ישובט בכל מנוע שיודע לשבט קול.",
     builtin: "מובנה", custom: "קול שלך", use: "בחירה", inUse: "נבחר", fast: "מהיר", hebrewOnly: "עברית בלבד", hebrewOnlyHint: "המנוע הזה קורא עברית בלבד: מילים באנגלית בטקסט ייצאו משובשות.",
+    oneLanguage: "עברית או אנגלית", oneLanguageHint: "כל משפט צריך להיות כולו בעברית או כולו באנגלית: מילים באנגלית בתוך משפט בעברית ייצאו משובשות. המשפט הראשון באנגלית מוריד מודל נוסף ולוקח יותר זמן.",
     englishOnly: "בעיקר אנגלית", englishOnlyHint: "נבנה לאנגלית. הוא קורא עברית במבטא אנגלי ולפעמים משמיט או מוסיף מילים; הכי טוב עם 7B והקלטה של דובר עברית. בלי ניקוד. ההקראה הראשונה טוענת את המודל, וזה לוקח דקה או יותר.",
     deleteVoiceConfirm: "למחוק את הקול \"{name}\" מכל המנועים?", voiceDeleted: "הקול \"{name}\" נמחק.",
     cantDelete: "לא ניתן למחוק את הקול.", deleteVoice: "מחיקת הקול {name}", voiceCount: "{n} קולות",
@@ -1052,7 +1060,7 @@ function applyLanguage() {
   document.querySelectorAll("[data-lang]").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang));
   $("toastClose").setAttribute("aria-label", t("close"));
   // Everything built from data gets rebuilt in the new language.
-  renderHealth(); updateCount(); renderPresets(presets, $("preset").value);
+  renderHealth(); renderGpu(); updateCount(); renderPresets(presets, $("preset").value);
   if (voices.length) renderVoices(voices); else renderVoiceList();
   renderHistory(); renderLexicon(lexicon); renderStatus(); renderZonos(); renderJob(); renderClips(); updateDocUses(); renderSttSettings(); renderTranscribe();
   if (current) { renderSentences(current.meta); updateNow(); }
@@ -1118,6 +1126,25 @@ function renderHealth() {
 }
 api("/health").then(r => r.json()).then(h => { health = h; renderHealth(); })
   .catch(() => { health = false; renderHealth(); });
+
+// The GPU meter in the top bar. It waits while the tab is hidden and shows nothing without a GPU.
+let gpuNow = null;
+function renderGpu() {
+  $("gpuChip").hidden = !gpuNow;
+  if (!gpuNow) return;
+  const share = Math.round(100 * gpuNow.used_gb / gpuNow.total_gb);
+  $("gpuText").textContent = `${t("gpuMemory")}: ${t("gpuOf", { u: gpuNow.used_gb, t: gpuNow.total_gb })}`;
+  $("gpuFill").style.width = share + "%";
+  $("gpuFill").classList.toggle("full", share >= 90);
+}
+async function pollGpu() {
+  if (document.hidden) return;
+  try { gpuNow = await (await api("/gpu/memory")).json(); } catch { gpuNow = null; }
+  renderGpu();
+}
+pollGpu();
+setInterval(pollGpu, 5000);
+document.addEventListener("visibilitychange", pollGpu);
 
 async function loadStatus() {
   try { statusData = await (await api("/status")).json(); } catch { statusData = false; }
@@ -1678,6 +1705,7 @@ function voiceLabel(v) {
 }
 const engineLabel = (v) => FAST_ENGINES.has(v.engine) ? `${v.engine_label} (${t("fast")})`
   : v.hebrew_only ? `${v.engine_label} (${t("hebrewOnly")})`
+  : v.one_language ? `${v.engine_label} (${t("oneLanguage")})`
   : v.english_only ? `${v.engine_label} (${t("englishOnly")})` : (v.engine_label || v.engine);
 const engines = () => [...new Set(voices.map(v => v.engine))];
 
@@ -1701,6 +1729,7 @@ function onVoiceChange() {
   storage.set("kol-voice", v.id);
   $("engineTag").textContent = v.engine_label || "";
   $("hebrewOnlyHint").hidden = !v.hebrew_only;
+  $("oneLanguageHint").hidden = !v.one_language;
   $("englishOnlyHint").hidden = !v.english_only;
   renderEngineOptions();
   renderVoiceList();

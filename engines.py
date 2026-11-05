@@ -791,13 +791,13 @@ class RemoteEngine(OnDemand):
     GPU memory."""
 
     uses_niqqud = False  # these models read the text as-is; there's no niqqud step to preview
-    HEBREW_ONLY = {"f5"}  # Whisper heard nonsense for English ("This is Tomahawk...")
+    ONE_LANGUAGE = {"f5"}  # two models, Hebrew and English: a sentence mixing them comes out wrong
     ENGLISH_ONLY = {"vibevoice", "vibevoice7b"}  # trained on English and Chinese, Hebrew is accented
 
     def __init__(self, name: str, label: str, env: str, script: str, port: int, startup_timeout: float, info: dict):
         """info: what the worker's /info will say, to list the engine before it loads."""
         self.name, self.label = name, label
-        self.hebrew_only = name in self.HEBREW_ONLY
+        self.one_language = name in self.ONE_LANGUAGE
         self.english_only = name in self.ENGLISH_ONLY
         self.option_specs = WORKER_OPTIONS.get(name, [])
         self.env, self.script, self.port = env, script, port

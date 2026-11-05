@@ -27,7 +27,8 @@ a cloud service.
 | **Zonos-Hebrew** | GPU, Docker on another machine | default | yes | Optional, off by default. Hebrew only; has emotions. |
 
 English words inside Hebrew text, and English-only text, are read by every engine except
-F5-TTS and Zonos, which read Hebrew only (the app marks them "Hebrew only"). Kokoro and Magpie
+Zonos, which reads Hebrew only, and F5-TTS, which reads a sentence in Hebrew or in English but
+not a mix of both (the app marks them). Kokoro and Magpie
 read English with their Hebrew voices, so with a Hebrew accent. VibeVoice is the reverse
 (marked "English first"): Hebrew comes out with an English accent and some words added or
 dropped. It does best on the 7B model with a clean recording of a Hebrew speaker, and worse with
@@ -161,6 +162,11 @@ on the first start. Text gets niqqud from Phonikud, as for Kokoro. F5 has no voi
 own: it clones each voice in `voices\`. The first time it uses a voice it cuts the recording to
 under 12 seconds and writes down its words with Whisper (cached next to the voice). Don't
 install `torchcodec` in this env: it needs FFmpeg DLLs and breaks Whisper without them.
+
+The fine-tune reads Hebrew only, so a sentence with no Hebrew in it goes to the F5-TTS v1 base
+model, which downloads on the first English sentence (about 1.4 GB). English comes out best from
+a recording whose first seconds hold finished sentences. A sentence that mixes the two languages
+stays with the Hebrew model, so the English in it comes out wrong: use another engine for that.
 
 ### 8. Zonos-Hebrew (optional, off by default)
 

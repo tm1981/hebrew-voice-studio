@@ -47,6 +47,7 @@ Endpoints:
     POST   /documents (multipart: file, settings)        -> background job; GET /jobs/{id}, /documents/{id}/zip
     POST   /voices/check (multipart: files)              -> recording quality warnings
     GET    /status                                       -> engines, GPU, library, jobs
+    GET    /gpu/memory                                   -> used and total GPU memory, or null without a GPU
     GET    /settings/zonos  /  PUT /settings/zonos {"url"} -> connect to / drop Zonos-Hebrew (saved in settings.json)
     POST   /engines/{name}/unload, /engines/{name}/load  -> free / take a GPU engine's memory (it also
                                                             loads by itself on its next request)
@@ -508,6 +509,7 @@ def list_voices():
             "builtin": name in e.builtin_voices,
             "options": [spec["key"] for spec in getattr(e, "option_specs", [])],
             "hebrew_only": getattr(e, "hebrew_only", False),  # English in the text comes out wrong
+            "one_language": getattr(e, "one_language", False),  # Hebrew or English, not both in a sentence
             "english_only": getattr(e, "english_only", False),  # Hebrew in the text is accented and less exact
         }
         for e in engines.values()
@@ -1261,6 +1263,19 @@ def gpu_memory() -> tuple[int, int]:
         return total - free, total
 
 
+def gpu_summary():
+    if not torch.cuda.is_available():
+        return None
+    used, total = gpu_memory()
+    return {"name": torch.cuda.get_device_name(0), "used_gb": round(used / 2**30, 1), "total_gb": round(total / 2**30, 1)}
+
+
+@app.get("/gpu/memory")
+def gpu_memory_now():
+    """For the meter in the page's top bar, which asks every few seconds: /status also asks every worker."""
+    return gpu_summary()
+
+
 @app.get("/status")
 def status():
     from engines import OnDemand, RemoteEngine, ZonosEngine
@@ -1275,12 +1290,8 @@ def status():
         idle = round((time.monotonic() - e.last_used) / 60, 1) if gpu and loaded else None
         rows.append({"name": e.name, "label": e.label, "kind": kind, "voices": len(e.voices), "alive": alive,
                      "gpu": gpu, "loaded": loaded, "idle_minutes": idle, "keep_loaded": e.name in keep_loaded})
-    gpu = None
-    if torch.cuda.is_available():
-        used, total = gpu_memory()
-        gpu = {"name": torch.cuda.get_device_name(0), "used_gb": round(used / 1e9, 1), "total_gb": round(total / 1e9, 1)}
     return {
-        "engines": rows, "gpu": gpu, "library_items": len(library.list()), "memory_cache": len(api_cache.items),
+        "engines": rows, "gpu": gpu_summary(), "library_items": len(library.list()), "memory_cache": len(api_cache.items),
         "jobs_running": sum(1 for j in jobs.jobs.values() if j["status"] == "running"),
         "auth": bool(API_KEY), "auto_unload_minutes": auto_unload["minutes"],
         "wyoming_port": args.wyoming_port or None,
