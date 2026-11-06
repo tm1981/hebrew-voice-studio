@@ -62,7 +62,9 @@ ABBREVIATIONS = {
 CURRENCY = {"₪": "שקלים", "$": "דולר", "€": "יורו", "£": "פאונד"}
 # Numbers in English ("I am 10 years old") are read in English. The next word in the same
 # sentence decides ("יש לי 3 apples" -> "three apples"), or the one before when the number
-# ends the sentence ("born in 1990."); a number on its own stays Hebrew.
+# ends the sentence ("born in 1990."). So does a sentence with English and no Hebrew or Arabic
+# ("No. 5", "16GB"), and for one with no letters ("2.") its line, then the whole text; a number
+# with no letters anywhere stays Hebrew.
 ENGLISH_CURRENCY = {"$": ("dollar", "cent"), "€": ("euro", "cent"), "£": ("pound", "penny"), "₪": ("shekel", "agora")}
 ENGLISH_PLURAL = {"penny": "pence", "agora": "agorot"}
 YEAR_BEFORE = {"in", "since", "from", "until", "till", "by", "of", "year", "circa", "early", "late", "mid"}
@@ -87,6 +89,17 @@ _LETTERS = f"{HEBREW}A-Za-z{ARABIC}"
 _LETTER_AFTER = re.compile(rf"^[^{_LETTERS}.!?؟\n]*([{_LETTERS}])")
 _LETTER_BEFORE = re.compile(rf"([{_LETTERS}])[^{_LETTERS}.!?؟\n]*$")
 _ARABIC_LETTER = re.compile(rf"[{ARABIC}]")
+_ANY_LETTER = re.compile(rf"[{_LETTERS}]")
+_NOT_ENGLISH_LETTER = re.compile(rf"[{HEBREW}{ARABIC}]")
+_SENTENCE_END = re.compile(r"[.!?؟]\s")
+# Digits and Latin letters in one word: "16GB", "3.5GHz", "M4", "1990s"
+_GLUED_NUMBER = re.compile(r"(?<!\w)(?:\d+(?:\.\d+)?[A-Za-z]|[A-Za-z]+\d)[A-Za-z\d]*(?!\w)")
+_GLUED_PARTS = re.compile(r"\d+(?:\.\d+)?|[A-Za-z]+")
+_ORDINAL = re.compile(r"\d+(?:st|nd|rd|th)")
+_DECADE = re.compile(r"(\d{1,3}0)s")
+# "24/7", "50/50", "3/4", once _ENGLISH_DATE has taken the dates
+CLOCK = {"am": "A M", "pm": "P M"}  # read as letters: "ten am" came out as "tenement"
+_ENGLISH_PAIR = re.compile(r"(?<![\w.,/:])(\d+)/(\d+)(?![\w/]|[.,:]\d)")
 _NUMBER = r"\d+(?:[.,]\d+)*"
 _CURRENCY_AFTER = re.compile(rf"({_NUMBER})\s*([₪$€£])")
 _CURRENCY_BEFORE = re.compile(rf"([₪$€£])\s*({_NUMBER})")
@@ -164,9 +177,23 @@ def _in_english(text: str, start: int, end: int) -> tuple[bool, str]:
     before = _WORD_BEFORE.search(text[max(0, start - 200) : start])
     after = _WORD_AFTER.search(text[end:])
     word = before.group(1).lower() if before else ""
-    if after:
-        return bool(_LATIN.match(after.group(1))), word
-    return bool(before and _LATIN.match(word)), word
+    english = _LATIN.match(after.group(1)) if after else before and _LATIN.match(word)
+    return bool(english) or _english_around(text, start), word
+
+
+def _english_around(text: str, pos: int) -> bool:
+    """Whether the sentence at pos is English: Latin letters and no Hebrew or Arabic. With no
+    letters in it, its line decides, then the whole text."""
+    start = text.rfind("\n", 0, pos) + 1
+    end = text.find("\n", pos)
+    line = text[start : len(text) if end < 0 else end]
+    pos -= start
+    sentence_start = max((m.end() for m in _SENTENCE_END.finditer(line, 0, pos)), default=0)
+    sentence_end = _SENTENCE_END.search(line, pos)
+    for scope in (line[sentence_start : sentence_end.end() if sentence_end else len(line)], line, text):
+        if _ANY_LETTER.search(scope):
+            return bool(_LATIN.search(scope)) and not _NOT_ENGLISH_LETTER.search(scope)
+    return False
 
 
 def _in_arabic(text: str, start: int, end: int) -> bool:
@@ -213,6 +240,25 @@ def _expand_english_date(m: re.Match) -> str:
     return words
 
 
+def _split_glued_number(m: re.Match) -> str:
+    """"16GB" -> "16 GB", so the number gets read; only in English, "1990s" -> "nineteen nineties"."""
+    word = m.group(0)
+    if _ORDINAL.fullmatch(word) or not _english_around(m.string, m.start()):
+        return word
+    decade = _DECADE.fullmatch(word)
+    if decade:
+        words = num2words_en(int(decade.group(1)), to="year")
+        return words[:-1] + "ies" if words.endswith("y") else words + "s"
+    return " ".join(CLOCK.get(part.lower(), part) for part in _GLUED_PARTS.findall(word))
+
+
+def _expand_english_pair(m: re.Match) -> str:
+    if not _in_english(m.string, m.start(), m.end())[0]:
+        return m.group(0)
+    a, b = int(m.group(1)), int(m.group(2))
+    return f"{num2words_en(a)}{' over ' if a < b else ' '}{num2words_en(b)}"
+
+
 def _english_count(n: int, unit: str) -> str:
     plural = unit if n == 1 else ENGLISH_PLURAL.get(unit, unit + "s")
     return f"{num2words_en(n)} {plural}"
@@ -253,7 +299,9 @@ def normalize(text: str) -> str:
         text = pattern.sub(lambda m, r=reading: m.group(1) + r, text)
     text = _ARABIC_DATE.sub(_expand_arabic_date, text)
     text = _ARABIC_NUMBER.sub(_expand_arabic_number, text)
+    text = _GLUED_NUMBER.sub(_split_glued_number, text)
     text = _ENGLISH_DATE.sub(_expand_english_date, text)
+    text = _ENGLISH_PAIR.sub(_expand_english_pair, text)
     text = _ENGLISH_NUMBER.sub(_expand_english, text)
     text = _CURRENCY_BEFORE.sub(lambda m: f"{m.group(2)} {CURRENCY[m.group(1)]}", text)
     text = _CURRENCY_AFTER.sub(lambda m: f"{m.group(1)} {CURRENCY[m.group(2)]}", text)

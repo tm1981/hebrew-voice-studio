@@ -24,6 +24,10 @@ class _Analyzer(AlignmentStreamAnalyzer):
     def _add_attention_spy(self, *_):
         pass
 
+    def step(self, logits, next_token=None):
+        i, j = self.text_tokens_slice  # the stock check for repeating skips the last 5 text tokens,
+        return logits if j - i <= 5 else super().step(logits, next_token=next_token)  # so "No." fails
+
 
 def _fuse(layers):
     """One matrix for each layer's q/k/v and gate/up. The modules' weights become views of it, so
