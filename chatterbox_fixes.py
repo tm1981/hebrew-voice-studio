@@ -22,11 +22,22 @@ ALIGNED_LAYERS = {layer for layer, _ in LLAMA_ALIGNED_HEADS}
 MAX_SPEECH_PER_TEXT_TOKEN = 1.6
 MAX_SPEECH_PER_ENGLISH_TOKEN = 3.2
 MIN_SPEECH_TOKENS = 20
+# Arabic has no niqqud either. 72 readings of 8 sentences: every normal one fit 2.6 per text
+# token plus a fixed 50 (short sentences run long), and the 3 that invented speech didn't.
+ARABIC_SPEECH_PER_TOKEN, ARABIC_EXTRA_TOKENS = 2.6, 50
 HEBREW_LETTER, LATIN_LETTER = re.compile(r"[א-ת]"), re.compile(r"[A-Za-z]")
+ARABIC_LETTER = re.compile(r"[ء-ي]")
+
+
+def is_arabic(text: str) -> bool:
+    """Whether a chunk is mostly Arabic, so Chatterbox should read it as Arabic."""
+    return len(ARABIC_LETTER.findall(text)) > len(HEBREW_LETTER.findall(text)) + len(LATIN_LETTER.findall(text))
 
 
 def speech_token_ratio(text: str) -> float:
     """Cap ratio for a chunk: Hebrew's, moving to English's with the share of Latin letters."""
+    if is_arabic(text):
+        return ARABIC_SPEECH_PER_TOKEN + ARABIC_EXTRA_TOKENS / (len(text) + 4)  # about 4 tokens more than letters
     hebrew, latin = len(HEBREW_LETTER.findall(text)), len(LATIN_LETTER.findall(text))
     share = latin / (hebrew + latin) if hebrew + latin else 0.0
     return MAX_SPEECH_PER_TEXT_TOKEN + share * (MAX_SPEECH_PER_ENGLISH_TOKEN - MAX_SPEECH_PER_TEXT_TOKEN)

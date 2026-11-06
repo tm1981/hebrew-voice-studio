@@ -1,6 +1,6 @@
 """Text preparation applied before every engine: the user's pronunciation dictionary,
 then Hebrew normalization (abbreviations, currency, dates, numbers). Numbers in English
-sentences become English words instead.
+and Arabic sentences become English and Arabic words instead.
 
 Engines handle digits and abbreviations inconsistently ("15:30", "ד"ר", "250 ₪"), so
 everything is turned into plain Hebrew words first. Numbers use hebrew-num2words (it
@@ -79,11 +79,21 @@ _ENGLISH_NUMBER = re.compile(
 _WORD_BEFORE = re.compile(rf"([{HEBREW}A-Za-z][{HEBREW}{MARKS}A-Za-z'’]*)[^{HEBREW}{MARKS}A-Za-z.!?\n]*$")
 _WORD_AFTER = re.compile(rf"^[^{HEBREW}A-Za-z.!?\n]*([{HEBREW}A-Za-z])")
 _LATIN = re.compile(r"[A-Za-z]")
+ARABIC = "ء-ي"
+ARABIC_CURRENCY = {"₪": "شيكل", "$": "دولار", "€": "يورو", "£": "جنيه"}
+ARABIC_MONTHS = ("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو",
+                 "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر")
+_LETTERS = f"{HEBREW}A-Za-z{ARABIC}"
+_LETTER_AFTER = re.compile(rf"^[^{_LETTERS}.!?؟\n]*([{_LETTERS}])")
+_LETTER_BEFORE = re.compile(rf"([{_LETTERS}])[^{_LETTERS}.!?؟\n]*$")
+_ARABIC_LETTER = re.compile(rf"[{ARABIC}]")
 _NUMBER = r"\d+(?:[.,]\d+)*"
 _CURRENCY_AFTER = re.compile(rf"({_NUMBER})\s*([₪$€£])")
 _CURRENCY_BEFORE = re.compile(rf"([₪$€£])\s*({_NUMBER})")
 # An attached prefix ("ב-12/03") joins the expanded words without its hyphen ("בשנים עשר").
 _DATE = re.compile(rf"(?:([{PREFIXES}]{{1,3}})-?)?(?<!\d)(\d{{1,2}})[/.](\d{{1,2}})[/.](\d{{4}}|\d{{2}})(?!\d)")
+_ARABIC_DATE = re.compile(r"(?<![\d/.])(\d{1,2})[/.](\d{1,2})[/.](\d{4}|\d{2})(?!\d)")
+_ARABIC_NUMBER = re.compile(rf"(?:([₪$€£])\s?)?(?<![\w.,/:])({_NUMBER})(?::(\d{{2}})(?!\d))?(?:\s?([%٪]))?(?:\s?([₪$€£]))?")
 _GERSHAYIM = str.maketrans({"״": '"', "׳": "'", "“": '"', "”": '"', "’": "'"})
 
 
@@ -159,6 +169,39 @@ def _in_english(text: str, start: int, end: int) -> tuple[bool, str]:
     return bool(before and _LATIN.match(word)), word
 
 
+def _in_arabic(text: str, start: int, end: int) -> bool:
+    """Whether the number at text[start:end] is in Arabic, going by the nearest letter."""
+    letter = _LETTER_AFTER.search(text[end:]) or _LETTER_BEFORE.search(text[max(0, start - 200) : start])
+    return bool(letter and _ARABIC_LETTER.match(letter.group(1)))
+
+
+def _arabic(n: int) -> str:
+    return num2words_en(n, lang="ar")
+
+
+def _expand_arabic_date(m: re.Match) -> str:
+    day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not (_in_arabic(m.string, m.start(), m.end()) and 1 <= day <= 31 and 1 <= month <= 12):
+        return m.group(0)
+    return f"{_arabic(day)} {ARABIC_MONTHS[month - 1]} {_arabic(year + (2000 if len(m.group(3)) == 2 else 0))}"
+
+
+def _expand_arabic_number(m: re.Match) -> str:
+    if not _in_arabic(m.string, m.start(2), m.end(2)):
+        return m.group(0)
+    cur_before, number, minutes, percent, cur_after = m.groups()
+    whole, _, fraction = number.replace(",", "").partition(".")
+    words = _arabic(int(whole))
+    if minutes:
+        words += " و " + _arabic(int(minutes)) if int(minutes) else ""
+    if fraction:
+        words += " فاصلة " + " ".join(_arabic(int(d)) for d in fraction)
+    if percent:
+        words += " بالمئة"
+    currency = cur_before or cur_after
+    return f"{words} {ARABIC_CURRENCY[currency]}" if currency else words
+
+
 def _expand_english_date(m: re.Match) -> str:
     day, sep, month, year = int(m.group(1)), m.group(2), int(m.group(3)), m.group(4)
     english, before = _in_english(m.string, m.start(), m.end())
@@ -204,10 +247,12 @@ def _expand_english(m: re.Match) -> str:
 
 
 def normalize(text: str) -> str:
-    """Abbreviations, currency, dates and numbers into words: English words for a number in
-    English, Hebrew for the rest."""
+    """Abbreviations, currency, dates and numbers into words: English or Arabic words for a
+    number in those languages, Hebrew for the rest."""
     for pattern, reading in _ABBREVIATION_PATTERNS:
         text = pattern.sub(lambda m, r=reading: m.group(1) + r, text)
+    text = _ARABIC_DATE.sub(_expand_arabic_date, text)
+    text = _ARABIC_NUMBER.sub(_expand_arabic_number, text)
     text = _ENGLISH_DATE.sub(_expand_english_date, text)
     text = _ENGLISH_NUMBER.sub(_expand_english, text)
     text = _CURRENCY_BEFORE.sub(lambda m: f"{m.group(2)} {CURRENCY[m.group(1)]}", text)

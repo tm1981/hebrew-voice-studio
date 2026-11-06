@@ -418,6 +418,7 @@
           <p class="hint" id="oneLanguageHint" data-i18n="oneLanguageHint" hidden></p>
           <p class="hint" id="englishOnlyHint" data-i18n="englishOnlyHint" hidden></p>
           <p class="hint" id="noHebrewHint" data-i18n="noHebrewHint" hidden></p>
+          <p class="hint" id="arabicHint" data-i18n="arabicHint" hidden></p>
         </div>
         <div class="field">
           <label for="voice" data-i18n="voice"></label>
@@ -707,7 +708,7 @@ const STR = {
     presetPrompt: "Name for these settings, e.g. News or Audiobook", presetLoaded: "Loaded the preset “{name}”.",
     presetSaved: "Saved as “{name}”.", presetDeleteConfirm: "Delete the preset “{name}”?",
     voice: "Voice", voiceEngine: "Engine", infoTitle: "What this engine can do",
-    "info.hebrew": "Hebrew", "info.english": "English", "info.clone": "Your voice", "info.speed": "Speed", "info.memory": "GPU memory", "info.tested": "Tested", "info.yours": "Your notes",
+    "info.hebrew": "Hebrew", "info.english": "English", "info.arabic": "Arabic", "info.clone": "Your voice", "info.speed": "Speed", "info.memory": "GPU memory", "info.tested": "Tested", "info.yours": "Your notes",
     speed: "Speed", speedHint: "Changes the pace without changing the pitch", format: "File format",
     normalize: "Numbers, dates and abbreviations as words", useCache: "Reuse an earlier identical reading",
     dialogue: "Dialogue: a voice per speaker", noSpeakers: "No lines like “Name: text” found yet.",
@@ -780,7 +781,7 @@ const STR = {
     voicesHelp: "The built-in voices of every engine, plus voices you add. A voice you add is cloned by every engine that can clone.",
     builtin: "Built-in", custom: "Your voice", use: "Use", inUse: "Selected", fast: "fast", hebrewOnly: "Hebrew only", hebrewOnlyHint: "This engine reads Hebrew only: English words in the text will come out wrong.",
     oneLanguage: "Hebrew or English", oneLanguageHint: "Each sentence should be all Hebrew or all English: English words inside a Hebrew sentence will come out wrong. The first English sentence downloads a second model and takes longer.",
-    noHebrew: "English only", noHebrewHint: "Reads English only: Hebrew text comes out as nonsense. A recording of a Hebrew speaker still works as the voice. The first reading with a recorded voice takes longer, while Whisper writes down its words.",
+    arabicHint: "This text has Arabic, which only Chatterbox has been tested with.", noHebrew: "English only", noHebrewHint: "Reads English only: Hebrew text comes out as nonsense. A recording of a Hebrew speaker still works as the voice. The first reading with a recorded voice takes longer, while Whisper writes down its words.",
     englishOnly: "English first", englishOnlyHint: "Made for English. It reads Hebrew with an English accent and sometimes drops or adds words; 7B with a recording of a Hebrew speaker does this best. Don't add niqqud. Its first reading loads the model, which takes a minute or more.",
     deleteVoiceConfirm: "Delete the voice “{name}” from all engines?", voiceDeleted: "The voice “{name}” was deleted.",
     cantDelete: "Couldn't delete the voice.", deleteVoice: "Delete the voice {name}", voiceCount: "{n} voices",
@@ -897,7 +898,7 @@ const STR = {
     presetPrompt: "שם להגדרות האלה, למשל: חדשות או ספר שמע", presetLoaded: "ההגדרות \"{name}\" נטענו.",
     presetSaved: "ההגדרות נשמרו בשם \"{name}\".", presetDeleteConfirm: "למחוק את ההגדרות \"{name}\"?",
     voice: "קול", voiceEngine: "מנוע", infoTitle: "מה המנוע הזה יודע לעשות",
-    "info.hebrew": "עברית", "info.english": "אנגלית", "info.clone": "הקול שלך", "info.speed": "מהירות", "info.memory": "זיכרון GPU", "info.tested": "בדיקות", "info.yours": "ההערות שלך",
+    "info.hebrew": "עברית", "info.english": "אנגלית", "info.arabic": "ערבית", "info.clone": "הקול שלך", "info.speed": "מהירות", "info.memory": "זיכרון GPU", "info.tested": "בדיקות", "info.yours": "ההערות שלך",
     speed: "מהירות", speedHint: "משנה מהירות בלי לשנות את גובה הקול", format: "פורמט קובץ",
     normalize: "מספרים, תאריכים וקיצורים למילים", useCache: "להשמיע הקראה קודמת זהה",
     dialogue: "דיאלוג: קול לכל דובר", noSpeakers: "עוד לא נמצאו שורות בצורה \"שם: טקסט\".",
@@ -970,7 +971,7 @@ const STR = {
     voicesHelp: "הקולות המובנים של כל מנוע, וגם קולות שהוספתם. קול שתוסיפו ישובט בכל מנוע שיודע לשבט קול.",
     builtin: "מובנה", custom: "קול שלך", use: "בחירה", inUse: "נבחר", fast: "מהיר", hebrewOnly: "עברית בלבד", hebrewOnlyHint: "המנוע הזה קורא עברית בלבד: מילים באנגלית בטקסט ייצאו משובשות.",
     oneLanguage: "עברית או אנגלית", oneLanguageHint: "כל משפט צריך להיות כולו בעברית או כולו באנגלית: מילים באנגלית בתוך משפט בעברית ייצאו משובשות. המשפט הראשון באנגלית מוריד מודל נוסף ולוקח יותר זמן.",
-    noHebrew: "אנגלית בלבד", noHebrewHint: "קורא אנגלית בלבד: טקסט בעברית יוצא חסר פשר. הקלטה של דובר עברית עדיין עובדת כקול. ההקראה הראשונה עם קול מוקלט לוקחת יותר זמן, כי Whisper כותב את המילים שלו.",
+    arabicHint: "בטקסט יש ערבית, שנבדקה רק עם Chatterbox.", noHebrew: "אנגלית בלבד", noHebrewHint: "קורא אנגלית בלבד: טקסט בעברית יוצא חסר פשר. הקלטה של דובר עברית עדיין עובדת כקול. ההקראה הראשונה עם קול מוקלט לוקחת יותר זמן, כי Whisper כותב את המילים שלו.",
     englishOnly: "בעיקר אנגלית", englishOnlyHint: "נבנה לאנגלית. הוא קורא עברית במבטא אנגלי ולפעמים משמיט או מוסיף מילים; הכי טוב עם 7B והקלטה של דובר עברית. בלי ניקוד. ההקראה הראשונה טוענת את המודל, וזה לוקח דקה או יותר.",
     deleteVoiceConfirm: "למחוק את הקול \"{name}\" מכל המנועים?", voiceDeleted: "הקול \"{name}\" נמחק.",
     cantDelete: "לא ניתן למחוק את הקול.", deleteVoice: "מחיקת הקול {name}", voiceCount: "{n} קולות",
@@ -1640,7 +1641,7 @@ textEl.value = storage.get("kol-draft") ?? "שלום! זהו שרת הקראה �
 function updateCount() {
   $("count").textContent = `${textEl.value.length.toLocaleString("en")} / 5,000`;
 }
-textEl.addEventListener("input", () => { updateCount(); storage.set("kol-draft", textEl.value); });
+textEl.addEventListener("input", () => { updateCount(); updateArabicHint(); storage.set("kol-draft", textEl.value); });
 
 // Sliders
 for (const id of Object.keys(DEFAULTS)) {
@@ -1792,7 +1793,7 @@ function renderEngineInfo() {
   btn.setAttribute("aria-expanded", open);
   box.innerHTML = "";
   if (!open) return;
-  for (const key of ["hebrew", "english", "clone", "speed", "memory", "tested", "yours"]) {
+  for (const key of ["hebrew", "english", "arabic", "clone", "speed", "memory", "tested", "yours"]) {
     if (!info[key]) continue;
     const dt = document.createElement("dt"), dd = document.createElement("dd");
     dt.textContent = t(`info.${key}`);
@@ -1807,6 +1808,10 @@ $("engineInfoBtn").addEventListener("click", e => {
 });
 api("/engines/info").then(r => r.json()).then(d => { engineInfo = d; renderEngineInfo(); }).catch(() => {});
 
+function updateArabicHint() {
+  $("arabicHint").hidden = selectedVoice().engine === "chatterbox" || !/[ء-ي]/.test(textEl.value);
+}
+
 function onVoiceChange() {
   const v = selectedVoice();
   storage.set("kol-voice", v.id);
@@ -1815,6 +1820,7 @@ function onVoiceChange() {
   $("oneLanguageHint").hidden = !v.one_language;
   $("englishOnlyHint").hidden = !v.english_only;
   $("noHebrewHint").hidden = !v.no_hebrew;
+  updateArabicHint();
   renderEngineInfo();
   renderEngineOptions();
   renderVoiceList();

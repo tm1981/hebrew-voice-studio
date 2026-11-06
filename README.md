@@ -17,7 +17,7 @@ a cloud service.
 | **LightBlue** (BlueTTS v2) | CPU, in the server | adam, daniel, lily, noa | yes (rough: tone only) | Very fast; the default. Reads English inside Hebrew text. |
 | **Blue 2.5** (BlueTTS v2.5) | CPU, in the server | Female (Hebrew), Christabel, Liberty, Decker, Jason | yes (voice likeness on par with LightBlue) | Newer model by LightBlue's author (more training, 7 languages in its mix); about half LightBlue's speed. |
 | **Kokoro** Hebrew | CPU, in the server | shaul, plus heart, bella, emma, michael and their blends with Shaul | no | Fast and clear. Non-commercial license. |
-| **Chatterbox** Multilingual | GPU, in the server | default | yes | Expression and voice-adherence controls. About 4x real time, about 4 GB. |
+| **Chatterbox** Multilingual | GPU, in the server | default | yes | Expression and voice-adherence controls. About 4x real time, about 4 GB. Also reads Arabic. |
 | **OmniVoice** | GPU, worker process (env `omnivoice`) | female, male | yes (good) | Started and stopped by the server. |
 | **Higgs Audio v3** (Boson AI's Higgs TTS 3, 4B) | GPU, worker process (env `higgs`) | 6 generic presets | yes (good) | About 2.5x real time. 9 of 60 test sentences had a garbled word in testing. |
 | **QwenTTS-he** (Qwen3-TTS 1.7B + Hebrew adapter) | GPU, worker process (env `qwentts`) | female, male | yes (good) | Clearest in testing; about 8x real time. |
@@ -28,6 +28,10 @@ a cloud service.
 | **Fish Audio Drama 3** (35B, 4-bit weights) | GPU, worker process (env `drama`) | a random voice | yes | Reads Hebrew and English. Very good English; in Hebrew 5 of 60 test readings had words added or dropped and 23 had a misheard word. About 1.5x real time, up to 21 GB of GPU memory, 44 kHz. The first start downloads about 40 GB. |
 | **Breeze TTS 2 / Fast** (BreezeBlue) | GPU, worker process (env `breeze`) | a random voice, a new one for each sentence | yes | **English only**, like Ming. The normal mode takes about 2.5 s per second of audio and 9.2 GB of GPU memory; Fast about 3x real time and 16 to 19 GB. Can follow a written description of the voice. |
 | **Zonos-Hebrew** | GPU, Docker on another machine | default | yes | Optional, off by default. Hebrew only; has emotions. |
+
+Chatterbox also reads Arabic. It finds Arabic by itself in each sentence, so there's nothing to
+choose, and Hebrew, English and Arabic sentences can share one text. Numbers, dates and times
+in Arabic sentences become Arabic words. The other engines haven't been tested with Arabic.
 
 English words inside Hebrew text, and English-only text, are read by every engine except
 Zonos, which reads Hebrew only, and F5-TTS, which reads a sentence in Hebrew or in English but

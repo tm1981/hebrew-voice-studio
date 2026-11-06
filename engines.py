@@ -177,11 +177,11 @@ def load_custom_voices(engine) -> None:
 
 def split_sentences(text: str, max_chars: int = 200) -> list[str]:
     """Sentence-sized chunks; autoregressive engines generate short inputs more reliably."""
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?…\n])\s+", text.strip()) if s.strip()]
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?؟…\n])\s+", text.strip()) if s.strip()]
     chunks: list[str] = []
     for sentence in sentences:
         while len(sentence) > max_chars:
-            cut = sentence.rfind(",", 0, max_chars)
+            cut = max(sentence.rfind(",", 0, max_chars), sentence.rfind("،", 0, max_chars))
             if cut <= 0:
                 cut = sentence.rfind(" ", 0, max_chars)
             if cut <= 0:
@@ -295,10 +295,11 @@ class ChatterboxEngine(OnDemand):
     def __init__(self, device: str):
         from chatterbox.mtl_tts import Conditionals
 
-        from chatterbox_fixes import load_dicta, speech_token_ratio
+        from chatterbox_fixes import is_arabic, load_dicta, speech_token_ratio
 
         self._Conditionals = Conditionals
         self._speech_token_ratio = speech_token_ratio
+        self._is_arabic = is_arabic
         self.device = device
         self.dicta = load_dicta()  # CPU; stays when the model is unloaded
         self.lock = threading.RLock()
@@ -369,7 +370,7 @@ class ChatterboxEngine(OnDemand):
                     torch.manual_seed(seed)
                 wav = self.model.generate(
                     chunk,
-                    language_id=language,
+                    language_id="ar" if language == "he" and self._is_arabic(chunk) else language,
                     exaggeration=exaggeration,
                     cfg_weight=cfg_weight,
                     temperature=temperature,
