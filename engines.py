@@ -308,11 +308,13 @@ class ChatterboxEngine(OnDemand):
     def _load(self) -> None:
         from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
+        import chatterbox_fast
         from chatterbox_fixes import enable_speed_control, guard_speech_tokens, optimize_t3
 
         print(f"Loading Chatterbox Multilingual on {self.device}...")
         self.model = ChatterboxMultilingualTTS.from_pretrained(device=self.device)
         guard_speech_tokens(self.model)
+        chatterbox_fast.install(self.model.t3)  # before optimize_t3, which wraps it
         optimize_t3(self.model)
         enable_speed_control(self.model)
         self.sample_rate = self.model.sr

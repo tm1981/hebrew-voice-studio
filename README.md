@@ -17,7 +17,7 @@ a cloud service.
 | **LightBlue** (BlueTTS v2) | CPU, in the server | adam, daniel, lily, noa | yes (rough: tone only) | Very fast; the default. Reads English inside Hebrew text. |
 | **Blue 2.5** (BlueTTS v2.5) | CPU, in the server | Female (Hebrew), Christabel, Liberty, Decker, Jason | yes (voice likeness on par with LightBlue) | Newer model by LightBlue's author (more training, 7 languages in its mix); about half LightBlue's speed. |
 | **Kokoro** Hebrew | CPU, in the server | shaul, plus heart, bella, emma, michael and their blends with Shaul | no | Fast and clear. Non-commercial license. |
-| **Chatterbox** Multilingual | GPU, in the server | default | yes | Expression and voice-adherence controls. |
+| **Chatterbox** Multilingual | GPU, in the server | default | yes | Expression and voice-adherence controls. About 4x real time, about 4 GB. |
 | **OmniVoice** | GPU, worker process (env `omnivoice`) | female, male | yes (good) | Started and stopped by the server. |
 | **Higgs Audio v3** (Boson AI's Higgs TTS 3, 4B) | GPU, worker process (env `higgs`) | 6 generic presets | yes (good) | About 2.5x real time. 9 of 60 test sentences had a garbled word in testing. |
 | **QwenTTS-he** (Qwen3-TTS 1.7B + Hebrew adapter) | GPU, worker process (env `qwentts`) | female, male | yes (good) | Clearest in testing; about 8x real time. |
@@ -490,6 +490,7 @@ sits inside a volume. The backup holds the API key, so keep it private. From scr
 | `library.py`, `documents.py` | Saved readings and long-document jobs. |
 | `backup.py`, `wyoming_service.py` | Backup/restore of your data; the Wyoming server for Home Assistant. |
 | `chatterbox_fixes.py` | Fixes that make Chatterbox stable on Hebrew. |
+| `chatterbox_fast.py` | Fast decode loop for Chatterbox: the same tokens as the stock loop, about 6x faster. |
 | `web/index.html` | The whole web UI (one file). |
 | `voices/` | Your cloned voices (one file or folder per voice); `voices/.cache` is rebuilt as needed. These and the next two rows are in `DATA_DIR` (this folder unless set; `/data` in Docker). |
 | `outputs/library/` | Saved readings. |
@@ -530,7 +531,7 @@ consent of the person whose voice it is.
 | Kokoro | Kokoro-82M fine-tuned on SASPEECH (`thewh1teagle/kokoro-hebrew-nc`, from `avris/kokoro-hebrew-saspeech`) | **Non-commercial** (SASPEECH dataset terms) | [model](https://huggingface.co/thewh1teagle/kokoro-hebrew-nc) · [original](https://huggingface.co/avris/kokoro-hebrew-saspeech) · [dataset](https://www.openslr.org/134/) |
 | Kokoro extra voices | Kokoro-82M English voice styles (`voices-v1.0.bin`) | Apache-2.0 | [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) · [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx) |
 | Chatterbox | Chatterbox Multilingual (`ResembleAI/chatterbox`), by Resemble AI | MIT | [model](https://huggingface.co/ResembleAI/chatterbox) · [code](https://github.com/resemble-ai/chatterbox) |
-| OmniVoice | OmniVoice (`k2-fsa/OmniVoice`), by k2-fsa | Apache-2.0 (its audio tokenizer has its own license; see the model page) | [model](https://huggingface.co/k2-fsa/OmniVoice) · [code](https://github.com/k2-fsa/OmniVoice) |
+| OmniVoice | OmniVoice (`k2-fsa/OmniVoice`), by k2-fsa | Code Apache-2.0, model CC-BY-NC (non-commercial, from its training data); its audio tokenizer has its own license, see the model page | [model](https://huggingface.co/k2-fsa/OmniVoice) · [code](https://github.com/k2-fsa/OmniVoice) |
 | QwenTTS-he | Hebrew LoRA adapter `notmax123/QwenTTS-he-1.7B` (by Max Melichov) on Alibaba's `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | Apache-2.0 (adapter and base model) | [adapter](https://huggingface.co/notmax123/QwenTTS-he-1.7B) · [base model](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) · [code](https://github.com/QwenLM/Qwen3-TTS) |
 | Magpie-TTS Hebrew | Hebrew fine-tune `notmax123/magpie_tts_multilingual_357m-he` (by Max Melichov) of NVIDIA's `nvidia/magpie_tts_multilingual_357m`, with the codec `nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps` | NVIDIA Open Model License (commercial use allowed under its terms) | [model](https://huggingface.co/notmax123/magpie_tts_multilingual_357m-he) · [base model](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) · [code](https://github.com/maxmelichov/magpie_tts_multilingual_357m-he) |
 | Higgs | Higgs TTS 3 (4B) by Boson AI (`bosonai/higgs-tts-3-4b`), run through the plain-transformers port `multimodalart/higgs-audio-v3-tts-4b-transformers` (the same weights file, plus modeling code), with the codec `bosonai/higgs-audio-v2-tokenizer` | **Research and non-commercial** (Boson Higgs TTS 3 license; its Creator Use Grant allows monetized creator content if it credits Boson AI's Higgs Audio) | [model](https://huggingface.co/bosonai/higgs-tts-3-4b) · [port](https://huggingface.co/multimodalart/higgs-audio-v3-tts-4b-transformers) · [codec](https://huggingface.co/bosonai/higgs-audio-v2-tokenizer) |
