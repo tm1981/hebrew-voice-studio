@@ -811,7 +811,7 @@ class RemoteEngine(OnDemand):
     ENGLISH_ONLY = {"vibevoice", "vibevoice7b"}  # trained on English and Chinese, Hebrew is accented
     NO_HEBREW = {"ming", "breeze", "breezefast"}  # Hebrew text comes out as nonsense
     # QwenTTS-he ends a reading by itself after about 13 s, with or without the fast decode loop.
-    # All 18 readings of up to 150 characters finished; at 170 the clone stopped early on both test texts.
+    # All 24 readings of up to 150 characters finished; at 170 the clone stopped early on both test texts.
     MAX_CHARS = {"qwen": 120}
 
     def __init__(self, name: str, label: str, env: str, script: str, port: int, startup_timeout: float, info: dict):
