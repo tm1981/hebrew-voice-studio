@@ -12,6 +12,10 @@ pronunciations.json
 # Third-party code, fetched by tools/fetch_vendor.py
 vendor/BlueTTS/
 vendor/phonikud-chatterbox/
+vendor/breeze-tts/
+vendor/Ming-3.0-tts/
+vendor/ComfyUI/
+vendor/ComfyUI-Drama3/
 # no longer used (Higgs runs without it)
 vendor/higgs-studio/
 

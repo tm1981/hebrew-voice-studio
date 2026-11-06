@@ -1,0 +1,101 @@
+# Linux version of requirements/drama.lock.txt (same versions). Install with:
+#   uv pip install --no-deps --index-strategy unsafe-best-match -r requirements/linux/drama.txt
+# Exact package versions from the working 'drama' env, resolved on Linux in a container. torch is
+# the CUDA 13.2 build: on cu129 every generation fails with "Unsupported Flash Attention tensor
+# strides". comfy-kitchen and comfy-aimdo are pinned to the ComfyUI commit in vendor/ComfyUI.
+# Changes vs the Windows lock:
+# colorama dropped: Windows-only.
+# Linux only: the Linux torch wheels don't bundle CUDA like the Windows ones; they depend on the
+# nvidia-*, cuda-* wheels and triton (exact pins from torch's own metadata). Installed with
+# --no-deps, so they are listed here.
+--extra-index-url https://download.pytorch.org/whl/cu132
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.5
+aiosignal==1.4.0
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.16.0
+attrs==26.1.0
+av==19.0.2
+blake3==1.0.11
+certifi==2026.10.23
+cffi==2.1.1
+charset-normalizer==3.5.2
+click==8.5.0
+comfy-aimdo==0.5.6
+comfy-kitchen==0.2.38
+cuda-bindings==13.5.0
+cuda-pathfinder==1.8.6
+cuda-toolkit==13.2.2
+einops==0.8.2
+fastapi==0.162.0
+filelock==4.2.4
+frozenlist==1.8.0
+fsspec==2026.9.0
+h11==0.16.0
+hf-xet==1.8.0
+httpcore2==2.16.0
+httpx2==2.16.0
+huggingface-hub==2.4.0
+idna==3.20
+jinja2==3.1.6
+markdown-it-py==4.2.0
+markupsafe==3.0.3
+mdurl==0.1.2
+mpmath==1.3.0
+multidict==7.2.1
+networkx==3.7
+numpy==2.5.4
+nvidia-cublas==13.4.1.3
+nvidia-cuda-cupti==13.2.86
+nvidia-cuda-nvrtc==13.2.86
+nvidia-cuda-runtime==13.2.86
+nvidia-cudnn-cu13==9.24.0.43
+nvidia-cufft==12.2.0.57
+nvidia-cufile==1.17.1.22
+nvidia-curand==10.4.2.66
+nvidia-cusolver==12.2.0.11
+nvidia-cusparse==12.7.10.12
+nvidia-cusparselt-cu13==0.8.1
+nvidia-nccl-cu13==2.30.7
+nvidia-nvjitlink==13.5.37
+nvidia-nvshmem-cu13==3.4.5
+nvidia-nvtx==13.2.86
+opentelemetry-api==1.45.2
+packaging==26.3
+pillow==13.0.0
+propcache==0.5.4
+psutil==7.2.2
+pycparser==3.12
+pydantic-core==2.50.4
+pydantic-settings==2.16.2
+pydantic==2.14.3
+pygments==2.21.0
+python-dotenv==1.2.4
+pyyaml==6.0.3
+regex==2026.9.29
+requests==2.34.2
+rich==15.0.0
+safetensors==0.8.0
+scipy==1.18.1
+setuptools==84.2.1
+shellingham==1.5.4
+simpleeval==1.0.8
+soundfile==0.14.0
+starlette==1.10.0
+sympy==1.14.0
+tokenizers==0.23.3
+torch==2.14.1+cu132
+torchsde==0.2.6
+torchvision==0.29.2+cu132
+tqdm==4.70.1
+trampoline==0.1.2
+transformers==5.22.1
+triton==3.8.0
+truststore==0.10.5
+typer==0.27.3
+typing-extensions==4.16.0
+typing-inspection==0.4.5
+urllib3==2.8.0
+uvicorn==0.54.0
+yarl==1.25.1

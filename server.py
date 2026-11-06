@@ -47,6 +47,7 @@ Endpoints:
     POST   /documents (multipart: file, settings)        -> background job; GET /jobs/{id}, /documents/{id}/zip
     POST   /voices/check (multipart: files)              -> recording quality warnings
     GET    /status                                       -> engines, GPU, library, jobs
+    GET    /engines/info                                 -> what each engine can do, from tests (engine_info.json)
     GET    /gpu/memory                                   -> used and total GPU memory, or null without a GPU
     GET    /settings/zonos  /  PUT /settings/zonos {"url"} -> connect to / drop Zonos-Hebrew (saved in settings.json)
     POST   /engines/{name}/unload, /engines/{name}/load  -> free / take a GPU engine's memory (it also
@@ -511,6 +512,7 @@ def list_voices():
             "hebrew_only": getattr(e, "hebrew_only", False),  # English in the text comes out wrong
             "one_language": getattr(e, "one_language", False),  # Hebrew or English, not both in a sentence
             "english_only": getattr(e, "english_only", False),  # Hebrew in the text is accented and less exact
+            "no_hebrew": getattr(e, "no_hebrew", False),  # Hebrew in the text comes out as nonsense
         }
         for e in engines.values()
         for name in e.voices
@@ -521,6 +523,12 @@ def list_voices():
 def list_options():
     """Each engine's settings: [{key, type: range|select|toggle|seed, default, min, max, step, choices}]."""
     return {e.name: getattr(e, "option_specs", []) for e in engines.values()}
+
+
+@app.get("/engines/info")
+def engines_info():
+    """What each engine can do, from our tests and the owner's listening: engine_info.json."""
+    return json.loads((ROOT / "engine_info.json").read_text(encoding="utf-8"))
 
 
 @app.post("/voices")

@@ -112,6 +112,12 @@
   .opt-off { opacity: .45; }
   .field output { color: var(--ink); font-variant-numeric: tabular-nums; direction: ltr; }
   .hint { margin: 0; font-size: 12px; color: var(--faint); }
+  .info-btn { width: 18px; height: 18px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: none; color: var(--muted); font: italic 600 12px/1 Georgia, serif; cursor: pointer; }
+  .info-btn:hover, .info-btn[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+  .engine-info { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; margin: 2px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--raised); font-size: 12.5px; line-height: 1.4; }
+  .engine-info[hidden] { display: none; }
+  .engine-info dt { color: var(--muted); }
+  .engine-info dd { margin: 0; color: var(--ink); }
   .error-text { color: var(--error); }
   select, input[type="text"], input[type="search"], input[type="number"] {
     width: 100%; min-width: 0; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 8px;
@@ -404,11 +410,14 @@
           </div>
         </div>
         <div class="field">
-          <label for="engine" data-i18n="voiceEngine"></label>
+          <label for="engine"><span data-i18n="voiceEngine"></span>
+            <button type="button" class="info-btn" id="engineInfoBtn" aria-expanded="false" aria-controls="engineInfo" data-i18n-title="infoTitle" hidden>i</button></label>
           <select id="engine"></select>
+          <dl class="engine-info" id="engineInfo" hidden></dl>
           <p class="hint" id="hebrewOnlyHint" data-i18n="hebrewOnlyHint" hidden></p>
           <p class="hint" id="oneLanguageHint" data-i18n="oneLanguageHint" hidden></p>
           <p class="hint" id="englishOnlyHint" data-i18n="englishOnlyHint" hidden></p>
+          <p class="hint" id="noHebrewHint" data-i18n="noHebrewHint" hidden></p>
         </div>
         <div class="field">
           <label for="voice" data-i18n="voice"></label>
@@ -697,7 +706,9 @@ const STR = {
     preset: "Preset", presetNone: "No preset", savePreset: "Save current settings as a preset", deletePreset: "Delete this preset",
     presetPrompt: "Name for these settings, e.g. News or Audiobook", presetLoaded: "Loaded the preset “{name}”.",
     presetSaved: "Saved as “{name}”.", presetDeleteConfirm: "Delete the preset “{name}”?",
-    voice: "Voice", voiceEngine: "Engine", speed: "Speed", speedHint: "Changes the pace without changing the pitch", format: "File format",
+    voice: "Voice", voiceEngine: "Engine", infoTitle: "What this engine can do",
+    "info.hebrew": "Hebrew", "info.english": "English", "info.clone": "Your voice", "info.speed": "Speed", "info.memory": "GPU memory", "info.tested": "Tested", "info.yours": "Your notes",
+    speed: "Speed", speedHint: "Changes the pace without changing the pitch", format: "File format",
     normalize: "Numbers, dates and abbreviations as words", useCache: "Reuse an earlier identical reading",
     dialogue: "Dialogue: a voice per speaker", noSpeakers: "No lines like “Name: text” found yet.",
     advanced: "Advanced",
@@ -708,6 +719,11 @@ const STR = {
     "opt.retake": "Retake background sound", "opt.retake.hint": "Reads again, up to 3 times, when a take has sound behind the voice. Off is about twice as fast",
     "opt.postprocess": "Shorten long silences", "opt.postprocess.hint": "Off keeps the pauses as they came out",
     "opt.temperature": "Variation", "opt.temperature.hint": "Higher sounds livelier but may add or skip words",
+    "opt.drama.retake": "Retake short readings", "opt.drama.retake.hint": "Reads once more when a take stops before the end of the text",
+    "opt.direction": "Direction", "opt.direction.hint": "In English, how to read, like \"speak slowly and warmly\". Recorded voices only; the effect is weak",
+    "opt.instruction": "Voice description", "opt.instruction.hint": "In English, how the voice should sound, like \"a calm older man\". Leave empty for the recording alone",
+    "opt.breeze.guidance": "Description strength", "opt.breeze.guidance.hint": "How closely it follows the description; higher also reads more slowly",
+    "opt.breezefast.guidance": "Description strength", "opt.breezefast.guidance.hint": "How closely it follows the description; higher also reads more slowly",
     "opt.chatterbox.temperature.hint": "Above 0.6 the model may add words that aren't in the text",
     "opt.qwen.temperature": "Temperature", "opt.qwen.temperature.hint": "With Variation on: higher is livelier, lower is steadier",
     "opt.seed": "Seed", "opt.seed.hint": "The same number gives the same reading every time. Empty: a new take each time",
@@ -764,6 +780,7 @@ const STR = {
     voicesHelp: "The built-in voices of every engine, plus voices you add. A voice you add is cloned by every engine that can clone.",
     builtin: "Built-in", custom: "Your voice", use: "Use", inUse: "Selected", fast: "fast", hebrewOnly: "Hebrew only", hebrewOnlyHint: "This engine reads Hebrew only: English words in the text will come out wrong.",
     oneLanguage: "Hebrew or English", oneLanguageHint: "Each sentence should be all Hebrew or all English: English words inside a Hebrew sentence will come out wrong. The first English sentence downloads a second model and takes longer.",
+    noHebrew: "English only", noHebrewHint: "Reads English only: Hebrew text comes out as nonsense. A recording of a Hebrew speaker still works as the voice. The first reading with a recorded voice takes longer, while Whisper writes down its words.",
     englishOnly: "English first", englishOnlyHint: "Made for English. It reads Hebrew with an English accent and sometimes drops or adds words; 7B with a recording of a Hebrew speaker does this best. Don't add niqqud. Its first reading loads the model, which takes a minute or more.",
     deleteVoiceConfirm: "Delete the voice “{name}” from all engines?", voiceDeleted: "The voice “{name}” was deleted.",
     cantDelete: "Couldn't delete the voice.", deleteVoice: "Delete the voice {name}", voiceCount: "{n} voices",
@@ -879,7 +896,9 @@ const STR = {
     preset: "הגדרות שמורות", presetNone: "ללא", savePreset: "שמירת ההגדרות הנוכחיות", deletePreset: "מחיקת ההגדרות השמורות",
     presetPrompt: "שם להגדרות האלה, למשל: חדשות או ספר שמע", presetLoaded: "ההגדרות \"{name}\" נטענו.",
     presetSaved: "ההגדרות נשמרו בשם \"{name}\".", presetDeleteConfirm: "למחוק את ההגדרות \"{name}\"?",
-    voice: "קול", voiceEngine: "מנוע", speed: "מהירות", speedHint: "משנה מהירות בלי לשנות את גובה הקול", format: "פורמט קובץ",
+    voice: "קול", voiceEngine: "מנוע", infoTitle: "מה המנוע הזה יודע לעשות",
+    "info.hebrew": "עברית", "info.english": "אנגלית", "info.clone": "הקול שלך", "info.speed": "מהירות", "info.memory": "זיכרון GPU", "info.tested": "בדיקות", "info.yours": "ההערות שלך",
+    speed: "מהירות", speedHint: "משנה מהירות בלי לשנות את גובה הקול", format: "פורמט קובץ",
     normalize: "מספרים, תאריכים וקיצורים למילים", useCache: "להשמיע הקראה קודמת זהה",
     dialogue: "דיאלוג: קול לכל דובר", noSpeakers: "עוד לא נמצאו שורות בצורה \"שם: טקסט\".",
     advanced: "מתקדם",
@@ -890,6 +909,11 @@ const STR = {
     "opt.retake": "הקראה חוזרת מרעש רקע", "opt.retake.hint": "קורא שוב, עד 3 פעמים, כשיש צליל מאחורי הקול. כבוי מהיר בערך פי שניים",
     "opt.postprocess": "קיצור שתיקות ארוכות", "opt.postprocess.hint": "כבוי משאיר את ההפסקות כמו שיצאו",
     "opt.temperature": "גיוון", "opt.temperature.hint": "גבוה נשמע חי יותר, אבל עלול להוסיף או לדלג על מילים",
+    "opt.drama.retake": "הקראה חוזרת כשקצר מדי", "opt.drama.retake.hint": "קורא פעם נוספת כשהקראה נעצרת לפני סוף הטקסט",
+    "opt.direction": "הנחיה", "opt.direction.hint": "באנגלית, איך לקרוא, למשל \"speak slowly and warmly\". רק לקולות מוקלטים; ההשפעה חלשה",
+    "opt.instruction": "תיאור הקול", "opt.instruction.hint": "באנגלית, איך הקול צריך להישמע, למשל \"a calm older man\". ריק: רק לפי ההקלטה",
+    "opt.breeze.guidance": "עוצמת התיאור", "opt.breeze.guidance.hint": "עד כמה הוא נצמד לתיאור; גבוה גם קורא לאט יותר",
+    "opt.breezefast.guidance": "עוצמת התיאור", "opt.breezefast.guidance.hint": "עד כמה הוא נצמד לתיאור; גבוה גם קורא לאט יותר",
     "opt.chatterbox.temperature.hint": "מעל 0.6 המודל עלול להוסיף מילים שלא נכתבו",
     "opt.qwen.temperature": "טמפרטורה", "opt.qwen.temperature.hint": "כשגיוון דלוק: גבוה חי יותר, נמוך יציב יותר",
     "opt.seed": "Seed", "opt.seed.hint": "אותו מספר נותן אותה קריאה בכל פעם. ריק: גרסה חדשה בכל פעם",
@@ -946,6 +970,7 @@ const STR = {
     voicesHelp: "הקולות המובנים של כל מנוע, וגם קולות שהוספתם. קול שתוסיפו ישובט בכל מנוע שיודע לשבט קול.",
     builtin: "מובנה", custom: "קול שלך", use: "בחירה", inUse: "נבחר", fast: "מהיר", hebrewOnly: "עברית בלבד", hebrewOnlyHint: "המנוע הזה קורא עברית בלבד: מילים באנגלית בטקסט ייצאו משובשות.",
     oneLanguage: "עברית או אנגלית", oneLanguageHint: "כל משפט צריך להיות כולו בעברית או כולו באנגלית: מילים באנגלית בתוך משפט בעברית ייצאו משובשות. המשפט הראשון באנגלית מוריד מודל נוסף ולוקח יותר זמן.",
+    noHebrew: "אנגלית בלבד", noHebrewHint: "קורא אנגלית בלבד: טקסט בעברית יוצא חסר פשר. הקלטה של דובר עברית עדיין עובדת כקול. ההקראה הראשונה עם קול מוקלט לוקחת יותר זמן, כי Whisper כותב את המילים שלו.",
     englishOnly: "בעיקר אנגלית", englishOnlyHint: "נבנה לאנגלית. הוא קורא עברית במבטא אנגלי ולפעמים משמיט או מוסיף מילים; הכי טוב עם 7B והקלטה של דובר עברית. בלי ניקוד. ההקראה הראשונה טוענת את המודל, וזה לוקח דקה או יותר.",
     deleteVoiceConfirm: "למחוק את הקול \"{name}\" מכל המנועים?", voiceDeleted: "הקול \"{name}\" נמחק.",
     cantDelete: "לא ניתן למחוק את הקול.", deleteVoice: "מחיקת הקול {name}", voiceCount: "{n} קולות",
@@ -1079,7 +1104,7 @@ function applyLanguage() {
   document.querySelectorAll("[data-lang]").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang));
   $("toastClose").setAttribute("aria-label", t("close"));
   // Everything built from data gets rebuilt in the new language.
-  renderHealth(); renderGpu(); updateCount(); renderPresets(presets, $("preset").value);
+  renderHealth(); renderGpu(); renderEngineInfo(); updateCount(); renderPresets(presets, $("preset").value);
   if (voices.length) renderVoices(voices); else renderVoiceList();
   renderHistory(); renderLexicon(lexicon); renderStatus(); renderZonos(); renderJob(); renderClips(); updateDocUses(); renderSttSettings(); renderTranscribe();
   if (current) { renderSentences(current.meta); updateNow(); }
@@ -1682,6 +1707,13 @@ function renderEngineOptions() {
       box.append(field);
       if (hintHtml) box.insertAdjacentHTML("beforeend", hintHtml);
       continue;
+    } else if (spec.type === "text") {
+      field.className = "field";
+      field.innerHTML = `<label for="${id}">${label}</label><input type="text" id="${id}" maxlength="${spec.limit}" value="${escapeHtml(value)}">${hintHtml}`;
+      field.querySelector("input").addEventListener("change", e => {
+        setEngineOpt(engine, spec, e.target.value.trim());
+        if (specs.some(s => s.needs === spec.key)) renderEngineOptions();
+      });
     } else if (spec.type === "seed") {
       field.className = "field";
       field.innerHTML = `<label for="${id}">${label}</label>
@@ -1704,11 +1736,13 @@ const FAST_ENGINES = new Set(["lightblue", "blue25", "kokoro"]);
 // Looked up by voice id first (names can repeat across engines), then by name.
 const VOICE_LABELS = {
   he: { default: "ברירת מחדל", female: "אישה", male: "גבר", shaul: "שאול",
+        "breeze/default": "קול אקראי", "breezefast/default": "קול אקראי", "drama/default": "קול אקראי",
         "kokoro/heart_shaul": "Heart + שאול", "kokoro/bella_shaul": "Bella + שאול",
         "kokoro/emma_shaul": "Emma + שאול", "kokoro/michael_shaul": "Michael + שאול",
         "blue25/female": "אישה (עברית)", "blue25/libri_female_1088": "Christabel", "blue25/libri_female_6147": "Liberty",
         "blue25/libri_male_6209": "Decker", "blue25/libri_male_8088": "Jason" },
   en: { default: "Default", female: "Female", male: "Male",
+        "breeze/default": "Random voice", "breezefast/default": "Random voice", "drama/default": "Random voice",
         "kokoro/heart_shaul": "Heart + Shaul", "kokoro/bella_shaul": "Bella + Shaul",
         "kokoro/emma_shaul": "Emma + Shaul", "kokoro/michael_shaul": "Michael + Shaul",
         "blue25/female": "Female (Hebrew)", "blue25/libri_female_1088": "Christabel", "blue25/libri_female_6147": "Liberty",
@@ -1725,7 +1759,8 @@ function voiceLabel(v) {
 const engineLabel = (v) => FAST_ENGINES.has(v.engine) ? `${v.engine_label} (${t("fast")})`
   : v.hebrew_only ? `${v.engine_label} (${t("hebrewOnly")})`
   : v.one_language ? `${v.engine_label} (${t("oneLanguage")})`
-  : v.english_only ? `${v.engine_label} (${t("englishOnly")})` : (v.engine_label || v.engine);
+  : v.english_only ? `${v.engine_label} (${t("englishOnly")})`
+  : v.no_hebrew ? `${v.engine_label} (${t("noHebrew")})` : (v.engine_label || v.engine);
 const engines = () => [...new Set(voices.map(v => v.engine))];
 
 function renderVoices(list, select) {
@@ -1747,6 +1782,31 @@ function chooseVoice(id) {
   for (const v of voices.filter(v => v.engine === engine)) voiceSel.append(new Option(voiceLabel(v), v.id));
   voiceSel.value = id;
 }
+// The engine's info box: engine_info.json, kept up to date from tests and the owner's listening.
+let engineInfo = {};
+function renderEngineInfo() {
+  const info = engineInfo[selectedVoice().engine], box = $("engineInfo"), btn = $("engineInfoBtn");
+  btn.hidden = !info;
+  const open = !!info && storage.get("kol-engine-info") === "1";
+  box.hidden = !open;
+  btn.setAttribute("aria-expanded", open);
+  box.innerHTML = "";
+  if (!open) return;
+  for (const key of ["hebrew", "english", "clone", "speed", "memory", "tested", "yours"]) {
+    if (!info[key]) continue;
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = t(`info.${key}`);
+    dd.textContent = info[key][lang] ?? info[key].en;
+    box.append(dt, dd);
+  }
+}
+$("engineInfoBtn").addEventListener("click", e => {
+  e.preventDefault();  // it sits inside the label, which would open the engine box
+  storage.set("kol-engine-info", $("engineInfo").hidden ? "1" : "0");
+  renderEngineInfo();
+});
+api("/engines/info").then(r => r.json()).then(d => { engineInfo = d; renderEngineInfo(); }).catch(() => {});
+
 function onVoiceChange() {
   const v = selectedVoice();
   storage.set("kol-voice", v.id);
@@ -1754,6 +1814,8 @@ function onVoiceChange() {
   $("hebrewOnlyHint").hidden = !v.hebrew_only;
   $("oneLanguageHint").hidden = !v.one_language;
   $("englishOnlyHint").hidden = !v.english_only;
+  $("noHebrewHint").hidden = !v.no_hebrew;
+  renderEngineInfo();
   renderEngineOptions();
   renderVoiceList();
   updateDocUses();

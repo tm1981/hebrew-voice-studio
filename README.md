@@ -24,6 +24,9 @@ a cloud service.
 | **Magpie-TTS Hebrew** (NVIDIA Magpie 357M + Hebrew fine-tune) | GPU, worker process (env `magpie`) | 15 Hebrew voices (female1-5, male1-5, voice1-3, female1-he, male1-he) | no | Very clear (98-99% of words heard in testing); about 1.4x real time, 22 kHz. |
 | **F5-TTS Hebrew** (F5-TTS + Hebrew fine-tune) | GPU, worker process (env `f5`) | your recorded voices only | yes | Clear (no words added or dropped in 30 test sentences); about 2.5x real time, 24 kHz. Needs at least one recorded voice. |
 | **VibeVoice 1.5B / 7B** (Microsoft) | GPU, worker process (env `omnivoice`) | alice, carter, frank, maya, samuel | yes (no transcript needed) | **English first.** Long-form, natural English; Hebrew with an English accent; about real time (1.5B). Starts unloaded: the first reading loads it (1.5B: about 7 GB of GPU memory, 7B: about 19 GB). |
+| **Ming-3.0-tts** (inclusionAI, 0.5B) | GPU, worker process (env `ming`) | emma, george, charlotte | yes | **English only:** Hebrew text comes out as nonsense, though a recording of a Hebrew speaker works as the voice. About real time, 3.7 GB of GPU memory, 44 kHz. |
+| **Fish Audio Drama 3** (35B, 4-bit weights) | GPU, worker process (env `drama`) | a random voice | yes | Reads Hebrew and English. Very good English; in Hebrew 5 of 60 test readings had words added or dropped and 23 had a misheard word. About 1.5x real time, up to 21 GB of GPU memory, 44 kHz. The first start downloads about 40 GB. |
+| **Breeze TTS 2 / Fast** (BreezeBlue) | GPU, worker process (env `breeze`) | a random voice, a new one for each sentence | yes | **English only**, like Ming. The normal mode takes about 2.5 s per second of audio and 9.2 GB of GPU memory; Fast about 3x real time and 16 to 19 GB. Can follow a written description of the voice. |
 | **Zonos-Hebrew** | GPU, Docker on another machine | default | yes | Optional, off by default. Hebrew only; has emotions. |
 
 English words inside Hebrew text, and English-only text, are read by every engine except
@@ -34,6 +37,8 @@ read English with their Hebrew voices, so with a Hebrew accent. VibeVoice is the
 dropped. It does best on the 7B model with a clean recording of a Hebrew speaker, and worse with
 niqqud or romanized text. Some takes come out with sound behind the voice, so a noisy take is
 read again, up to 3 times; turn this off in Advanced for readings about twice as fast.
+Ming-3.0-tts and Breeze TTS 2 (marked "English only") don't read Hebrew at all: it comes out as
+nonsense.
 
 Every engine is optional at runtime: one that fails to load is skipped, and the server
 runs with the rest.
@@ -52,7 +57,9 @@ image as it is. The only things outside it are the conda environments themselves
   LightBlue, Blue 2.5 and Kokoro run on the CPU.
 - [Miniconda](https://docs.anaconda.com/miniconda/) (or Anaconda) and Git.
 - About 50 GB of disk for all models (most of it for Chatterbox, OmniVoice, Higgs,
-  QwenTTS-he, Magpie and F5-TTS in `models\hf`).
+  QwenTTS-he, Magpie and F5-TTS in `models\hf`), plus 25 GB for Drama 3 (with 40 GB free for its
+  first start) and 7 GB for Breeze TTS 2.
+- About 32 GB of system memory for Drama 3.
 
 ## Install
 
@@ -168,7 +175,47 @@ model, which downloads on the first English sentence (about 1.4 GB). English com
 a recording whose first seconds hold finished sentences. A sentence that mixes the two languages
 stays with the Hebrew model, so the English in it comes out wrong: use another engine for that.
 
-### 8. Zonos-Hebrew (optional, off by default)
+### 8. Ming-3.0-tts (optional)
+
+```bat
+conda create -y -n ming -c conda-forge python=3.10 pynini=2.1.6
+conda activate ming
+pip install -r requirements\ming.lock.txt
+```
+
+The first start downloads the 0.5B model into `models\hf`. Its code is in `vendor\Ming-3.0-tts`
+(step 2). The first reading with a recorded voice writes down its words with Whisper, cached next
+to the voice. `transformers` has to stay at 4.46.3: on newer versions the model doesn't stop, and
+every reading runs to about 28 seconds.
+
+### 9. Fish Audio Drama 3 (optional)
+
+```bat
+conda create -y -n drama python=3.12
+conda activate drama
+pip install -r requirements\drama.lock.txt
+```
+
+The first start downloads about 40 GB, converts it to a 24.6 GB 4-bit file in `models\drama3`
+(about 2.5 minutes) and deletes the download. This env uses the CUDA 13.2 build of PyTorch: on
+older builds every reading fails with "Unsupported Flash Attention tensor strides". It runs Drama
+through the code in `vendor\ComfyUI` and `vendor\ComfyUI-Drama3` (step 2), with no ComfyUI server.
+Up to 21 GB of GPU memory, which fits an RTX 3090 with no other engine loaded.
+
+### 10. Breeze TTS 2 (optional)
+
+```bat
+conda create -y -n breeze python=3.12
+conda activate breeze
+pip install -r requirements\breeze.lock.txt
+```
+
+The first start downloads the 7.2 GB model into `models\hf`. Its code is in `vendor\breeze-tts`
+(step 2). The env gives you two engines: the normal one, and Fast, which starts about 25 to 60
+seconds slower and holds about twice the GPU memory. The default voice changes with every
+sentence, so use a recorded voice or a voice description for anything longer.
+
+### 11. Zonos-Hebrew (optional, off by default)
 
 Zonos runs in Docker on a machine with an NVIDIA GPU (an RTX 3090 here).
 `docker\zonos-hebrew\docker-compose.yml` has the stack and instructions for Portainer.
@@ -193,7 +240,10 @@ docker run -d --gpus all -p 8010:8010 -p 10200:10200   -v /srv/voice/models:/app
 
 To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder.
 
-- `/app/models` holds the models (about 40 GB with every engine). Map it to a host folder to
+- `/app/models` holds the models (about 75 GB with every engine, and 40 GB more during Drama 3's
+  first start). Keep it on a local Linux disk: Drama 3 crashes reading its weights from a Windows
+  folder mounted into WSL.
+- Map `/app/models` to a host folder to
   keep downloads across rebuilds, or to reuse a models folder you already have.
 - `/data` holds your data: recorded voices, the library, presets, settings, pronunciations and
   `api_key.txt`.
@@ -336,6 +386,7 @@ curl http://localhost:8010/voices
 
 # Each engine's settings (key, type, default, range)
 curl http://localhost:8010/options
+curl http://localhost:8010/engines/info
 #   used in a request as {"options": {"magpie": {"temperature": 0.5, "seed": 7}}, "sentence_pause": 0.4, ...}
 ```
 
@@ -433,7 +484,8 @@ sits inside a volume. The backup holds the API key, so keep it private. From scr
 |---|---|
 | `server.py` | The API and web server; start here. |
 | `engines.py` | One class per engine behind a common interface, and the worker launcher. |
-| `workers/` | OmniVoice, Higgs, QwenTTS-he, Magpie and F5-TTS servers, each run in its own conda env. |
+| `workers/` | The GPU engines' servers, each run in its own conda env. |
+| `engine_info.json` | What each engine can do, from tests and listening: the page's engine info box. |
 | `text_prep.py`, `niqqud.py`, `script.py` | Hebrew normalization, niqqud handling, pauses and dialogue. |
 | `library.py`, `documents.py` | Saved readings and long-document jobs. |
 | `backup.py`, `wyoming_service.py` | Backup/restore of your data; the Wyoming server for Home Assistant. |
@@ -484,6 +536,9 @@ consent of the person whose voice it is.
 | Higgs | Higgs TTS 3 (4B) by Boson AI (`bosonai/higgs-tts-3-4b`), run through the plain-transformers port `multimodalart/higgs-audio-v3-tts-4b-transformers` (the same weights file, plus modeling code), with the codec `bosonai/higgs-audio-v2-tokenizer` | **Research and non-commercial** (Boson Higgs TTS 3 license; its Creator Use Grant allows monetized creator content if it credits Boson AI's Higgs Audio) | [model](https://huggingface.co/bosonai/higgs-tts-3-4b) · [port](https://huggingface.co/multimodalart/higgs-audio-v3-tts-4b-transformers) · [codec](https://huggingface.co/bosonai/higgs-audio-v2-tokenizer) |
 | VibeVoice | `vibevoice/VibeVoice-1.5B-hf` and `vibevoice/VibeVoice-7B-hf` (Microsoft's VibeVoice in Transformers format); sample voices from `bezzam/vibevoice_samples` | MIT | [1.5B](https://huggingface.co/vibevoice/VibeVoice-1.5B-hf) · [7B](https://huggingface.co/vibevoice/VibeVoice-7B-hf) · [code](https://github.com/microsoft/VibeVoice) |
 | F5-TTS Hebrew | Hebrew fine-tune `Yzamari/f5tts-hebrew-v2` of F5-TTS v1 Base, with the Vocos vocoder `charactr/vocos-mel-24khz` | Apache 2.0 (the F5-TTS v1 Base weights it starts from are CC BY-NC 4.0, so commercial use is unclear) | [model](https://huggingface.co/Yzamari/f5tts-hebrew-v2) · [code](https://github.com/SWivid/F5-TTS) |
+| Ming-3.0-tts | `inclusionAI/Ming-3.0-tts-0.5B` | MIT | [model](https://huggingface.co/inclusionAI/Ming-3.0-tts-0.5B) · [code](https://github.com/inclusionAI/Ming-3.0-tts) |
+| Fish Audio Drama 3 | `fishaudio/drama-3`, run through [ComfyUI](https://github.com/comfyanonymous/ComfyUI) (GPL-3.0) and [ComfyUI-Drama3](https://github.com/PedroMarinhoDev/ComfyUI-Drama3) | **Fish Audio Community License:** personal and non-commercial use; no cloning of a real person's voice without their consent | [model](https://huggingface.co/fishaudio/drama-3) |
+| Breeze TTS 2 | `BreezeBlue/Breeze-TTS-2` | **Research and non-commercial** (weights); Apache 2.0 (code); consent needed to clone a voice | [model](https://huggingface.co/BreezeBlue/Breeze-TTS-2) · [code](https://github.com/breezeblue-ai/breeze-tts) |
 | Zonos (optional) | Zonos-Hebrew (`notmax123/Zonos-Hebrew`), built on Zyphra's Zonos | **CC BY-NC 4.0** (non-commercial) | [model](https://huggingface.co/notmax123/Zonos-Hebrew) · [code](https://github.com/maxmelichov/Zonos-Hebrew) |
 | Speech-to-text | Hebrew fine-tune `ivrit-ai/whisper-large-v3-turbo` of OpenAI's Whisper large-v3-turbo | Apache 2.0 | [model](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo) |
 | Speech detection | Silero VAD | MIT | [code](https://github.com/snakers4/silero-vad) |

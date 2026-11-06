@@ -217,6 +217,10 @@ def toggle(key: str, default: bool = False) -> dict:
     return {"key": key, "type": "toggle", "default": default}
 
 
+def text(key: str, default: str = "", limit: int = 300) -> dict:
+    return {"key": key, "type": "text", "default": default, "limit": limit}
+
+
 SEED = {"key": "seed", "type": "seed", "default": None}  # None: random (or the engine's fixed seed)
 
 
@@ -234,6 +238,8 @@ def clean_options(specs: list[dict], values: dict) -> dict:
                 value = value if value in spec["choices"] else default
             elif spec["type"] == "toggle":
                 value = bool(value) if value is not None else default
+            elif spec["type"] == "text":
+                value = str(value).strip()[:spec["limit"]] if value is not None else default
             elif spec["type"] == "seed":
                 value = int(value) if value not in (None, "", -1) else None
                 value = value if value is None or 0 <= value < 2**31 else None
@@ -777,8 +783,18 @@ WORKER_OPTIONS = {
                rng("guidance", 2.5, 1.0, 5.0, 0.1), SEED],
     "f5": [rng("steps", 32, 16, 64, 4), rng("guidance", 2.0, 1.0, 3.0, 0.1), rng("sway", -1.0, -1.0, -0.5, 0.1), SEED],
     "vibevoice": [rng("guidance", 1.3, 1.0, 1.4, 0.05), rng("steps", 10, 5, 30, 1), SEED, toggle("retake", True)],
+    # Ming: direction only works with a recorded voice, and the effect is weak in testing
+    "ming": [rng("guidance", 2.0, 1.0, 4.0, 0.1), rng("temperature", 0.0, 0.0, 1.0, 0.1), text("direction"), SEED],
+    # Drama: top_k 0 is no cap; retake reads again when a take ends after the first clause
+    "drama": [rng("temperature", 1.0, 0.5, 1.5, 0.05), rng("top_p", 0.9, 0.5, 1.0, 0.05),
+              rng("top_k", 0, 0, 200, 1), SEED, toggle("retake", True)],
+    # Breeze: temperature 1.1 raises the floor between words; guidance only works with an instruction
+    "breeze": [rng("temperature", 0.9, 0.5, 1.1, 0.05), rng("top_k", 50, 10, 200, 10),
+               rng("repetition_penalty", 1.1, 1.0, 1.3, 0.05), text("instruction"),
+               {**rng("guidance", 4.0, 1.0, 6.0, 0.5), "needs": "instruction"}, SEED],
 }
 WORKER_OPTIONS["vibevoice7b"] = WORKER_OPTIONS["vibevoice"]
+WORKER_OPTIONS["breezefast"] = WORKER_OPTIONS["breeze"]
 
 
 class RemoteEngine(OnDemand):
@@ -793,12 +809,14 @@ class RemoteEngine(OnDemand):
     uses_niqqud = False  # these models read the text as-is; there's no niqqud step to preview
     ONE_LANGUAGE = {"f5"}  # two models, Hebrew and English: a sentence mixing them comes out wrong
     ENGLISH_ONLY = {"vibevoice", "vibevoice7b"}  # trained on English and Chinese, Hebrew is accented
+    NO_HEBREW = {"ming", "breeze", "breezefast"}  # Hebrew text comes out as nonsense
 
     def __init__(self, name: str, label: str, env: str, script: str, port: int, startup_timeout: float, info: dict):
         """info: what the worker's /info will say, to list the engine before it loads."""
         self.name, self.label = name, label
         self.one_language = name in self.ONE_LANGUAGE
         self.english_only = name in self.ENGLISH_ONLY
+        self.no_hebrew = name in self.NO_HEBREW
         self.option_specs = WORKER_OPTIONS.get(name, [])
         self.env, self.script, self.port = env, script, port
         self.url = f"http://127.0.0.1:{port}"
@@ -1011,7 +1029,7 @@ ZONOS_URL = os.environ.get("ZONOS_URL", "")
 WORKERS = [
     # name, label, conda env, script (and its arguments), port offset from the server's port,
     # startup timeout (first run downloads/loads weights). Offsets keep each server instance's
-    # workers apart: server 8010 -> workers 8031 to 8037.
+    # workers apart: server 8010 -> workers 8031 to 8041.
     ("omnivoice", "OmniVoice", "omnivoice", "omnivoice_worker.py", 21, 600),
     ("higgs", "Higgs", "higgs", "higgs_worker.py", 22, 600),
     ("qwen", "QwenTTS-he", "qwentts", "qwen_worker.py", 23, 600),
@@ -1020,11 +1038,18 @@ WORKERS = [
     # VibeVoice runs in OmniVoice's env (same transformers); the first start downloads 5 / 19 GB
     ("vibevoice", "VibeVoice 1.5B", "omnivoice", "vibevoice_worker.py --size 1.5b", 26, 1800),
     ("vibevoice7b", "VibeVoice 7B", "omnivoice", "vibevoice_worker.py --size 7b", 27, 1800),
+    ("ming", "Ming-3.0-tts", "ming", "ming_worker.py", 28, 600),
+    # The first start downloads about 40 GB and converts it, which needs about 32 GB of system memory
+    ("drama", "Fish Audio Drama 3", "drama", "drama_worker.py", 29, 3600),
+    # One process each: fast holds about twice the GPU memory for about 7 times the speed
+    ("breeze", "Breeze TTS 2", "breeze", "breeze_worker.py", 30, 1800),
+    ("breezefast", "Breeze TTS 2 Fast", "breeze", "breeze_worker.py --fast", 31, 1800),
 ]
 # What each worker's /info says, for listing it while it's unloaded (see the worker's own voices).
 HIGGS_PRESETS = ROOT / "models" / "higgs-voices"  # optional, see the README
 VIBEVOICE_INFO = {"sample_rate": 24000, "native_speed": False, "custom_voices": True,
                   "builtin_voices": ["alice", "carter", "frank", "maya", "samuel"]}
+BREEZE_INFO = {"sample_rate": 24000, "native_speed": False, "custom_voices": True, "builtin_voices": ["default"]}
 WORKER_INFO = {
     "omnivoice": {"sample_rate": 24000, "native_speed": True, "custom_voices": True, "builtin_voices": ["female", "male"]},
     "higgs": {"sample_rate": 24000, "native_speed": False, "custom_voices": True,
@@ -1036,6 +1061,11 @@ WORKER_INFO = {
     "f5": {"sample_rate": 24000, "native_speed": True, "custom_voices": True, "builtin_voices": []},
     "vibevoice": VIBEVOICE_INFO,
     "vibevoice7b": VIBEVOICE_INFO,
+    "ming": {"sample_rate": 44100, "native_speed": False, "custom_voices": True,
+             "builtin_voices": ["emma", "george", "charlotte"]},
+    "drama": {"sample_rate": 44100, "native_speed": False, "custom_voices": True, "builtin_voices": ["default"]},
+    "breeze": BREEZE_INFO,
+    "breezefast": BREEZE_INFO,
 }
 
 

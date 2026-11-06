@@ -14,6 +14,10 @@ pronunciations.json
 # Third-party code: tools/fetch_vendor.py downloads it at pinned versions during the build
 vendor/BlueTTS/
 vendor/phonikud-chatterbox/
+vendor/breeze-tts/
+vendor/Ming-3.0-tts/
+vendor/ComfyUI/
+vendor/ComfyUI-Drama3/
 vendor/higgs-studio/
 
 # Logs, caches, tests and tool state
