@@ -47,6 +47,33 @@ nonsense.
 Every engine is optional at runtime: one that fails to load is skipped, and the server
 runs with the rest.
 
+### Choosing which engines start
+
+`VOICE_ENGINES` is a comma-separated list of engine names. Only those engines start, and only
+their models get downloaded. Unset, every engine starts (Zonos only if `ZONOS_URL` is set).
+
+| Name | Engine |
+|---|---|
+| `lightblue` | LightBlue |
+| `blue25` | Blue 2.5 |
+| `kokoro` | Kokoro Hebrew |
+| `chatterbox` | Chatterbox Multilingual |
+| `omnivoice` | OmniVoice |
+| `higgs` | Higgs Audio v3 |
+| `qwen` | QwenTTS-he |
+| `magpie` | Magpie-TTS Hebrew |
+| `f5` | F5-TTS Hebrew |
+| `vibevoice` | VibeVoice 1.5B |
+| `vibevoice7b` | VibeVoice 7B |
+| `ming` | Ming-3.0-tts |
+| `drama` | Fish Audio Drama 3 |
+| `breeze` | Breeze TTS 2 |
+| `breezefast` | Breeze TTS 2 Fast |
+| `zonos` | Zonos-Hebrew (also needs `ZONOS_URL`) |
+
+If you set `VOICE_ENGINES` and want Zonos, include `zonos` in the list. A misspelled name gives
+no error: that engine just doesn't start.
+
 **Self-contained:** the code, models, voices and fonts all live inside this folder. Model
 downloads go to `models\hf` (the server points `HF_HOME` and `TORCH_HOME` at folders under
 `models\`), not to your user profile, so the folder can be copied or packed into a Docker
@@ -96,7 +123,8 @@ This downloads BlueTTS's runtime into `vendor\` at the version this app was test
 Face models into `models\hf`), so that first use takes a while. All engines need about 40 GB of
 disk. Some models ask you to accept their terms on the Hugging Face website first;
 then run `hf auth login`. To start only some engines (and download only their models), set
-`VOICE_ENGINES`, for example `set VOICE_ENGINES=lightblue,kokoro,qwen,magpie`.
+`VOICE_ENGINES`, for example `set VOICE_ENGINES=lightblue,kokoro,qwen,magpie`
+([all the names](#choosing-which-engines-start)).
 
 - If you already have models in another Hugging Face cache on this PC,
   `python tools\copy_hf_models.py [other cache folders]` copies them in instead.
@@ -252,7 +280,7 @@ To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder
 - `/data` holds your data: recorded voices, the library, presets, settings, pronunciations and
   `api_key.txt`.
 - `VOICE_ENGINES=lightblue,kokoro,qwen,magpie` starts only those engines (and downloads only
-  their models). GPU engines start unloaded and load when you choose one of their voices, so
+  their models; [all the names](#choosing-which-engines-start)). GPU engines start unloaded and load when you choose one of their voices, so
   only what you use takes GPU memory; unused ones unload by themselves after 30 minutes.
 - `ZONOS_URL=http://<host>:7860/` connects Zonos-Hebrew (or set it in the web UI).
 - Port 10200 is the Wyoming port for [Home Assistant](#home-assistant).

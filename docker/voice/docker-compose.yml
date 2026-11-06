@@ -25,8 +25,9 @@ services:
       # Which engines start (and so which models get downloaded); unset = all of them. With every
       # GPU engine loaded the app needs about 20-23 GB of GPU memory, which is tight on a 24 GB
       # card next to Zonos; unused GPU engines unload by themselves after 30 minutes (web UI:
-      # Server status). Names: lightblue, blue25, kokoro, chatterbox, omnivoice, higgs, qwen, magpie, f5
-      # and vibevoice, vibevoice7b (English only; they start unloaded, the 7B needs about 19 GB)
+      # Server status). Names: lightblue, blue25, kokoro, chatterbox, omnivoice, higgs, qwen, magpie,
+      # f5, vibevoice, vibevoice7b, ming, drama, breeze, breezefast, zonos (needs ZONOS_URL too).
+      # All GPU engines start unloaded; the README lists what each name is.
       # - VOICE_ENGINES=lightblue,blue25,kokoro,chatterbox,qwen,magpie,f5
       # Optional Zonos-Hebrew (it already runs on this host, port 7860). If both containers are on
       # the same compose network (e.g. the zonos-hebrew service added to this file) use the service
