@@ -49,7 +49,7 @@
     "english": {"en": "Reads it", "he": "קורא"},
     "clone": {"en": "Good", "he": "טוב"},
     "speed": {"en": "About 8× real time", "he": "בערך פי 8 מזמן אמת"},
-    "tested": {"en": "Whisper heard 98-100% of words, with no last words lost in 32 sentences. The clearest in testing.", "he": "Whisper שמע 98-100% מהמילים, בלי מילה אחרונה שאבדה ב־32 משפטים. הברור ביותר בבדיקות."},
+    "tested": {"en": "Whisper heard 98-100% of words, with no last words lost in 32 sentences. The clearest in testing. The model stops by itself after about 13 s, so the app reads at most 120 characters at a time.", "he": "Whisper שמע 98-100% מהמילים, בלי מילה אחרונה שאבדה ב־32 משפטים. הברור ביותר בבדיקות. המודל עוצר מעצמו אחרי כ־13 שניות, לכן האפליקציה מקריאה עד 120 תווים בכל פעם."},
     "yours": {"en": "Very clear.", "he": "ברור מאוד."}
   },
   "magpie": {
