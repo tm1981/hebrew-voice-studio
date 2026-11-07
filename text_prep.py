@@ -131,6 +131,12 @@ DIGITS = {
     "he": tuple(num2words.FEM_UNITS[:10]),
 }
 PLUS = {"en": "plus", "ar": "زائد", "he": "פלוס"}
+# "1990-2000", "1990–95": a range of years when the second is later, read with "to" between
+_YEAR_RANGE = re.compile(
+    rf"(?<![{HEBREW}\w.,/:+-])(?:([{PREFIXES}]{{1,3}})-)?(1\d{{3}}|20\d{{2}})\s*[-–]\s*(\d{{4}}|\d{{2}})(?![\w/-]|[.,:]\d)"
+)
+# Hebrew uses "עד" even after "בין": with "ל" Whisper lost a digit of "1939" in 3 of 6 readings.
+RANGE_WORD = {"en": "to", "ar": "إلى", "he": "עד"}
 _NUMBER = r"\d+(?:[.,]\d+)*"
 _MONEY_AMOUNT = r"(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?"
 # "250 ₪", "₪250", "49.90 שקלים", with an attached prefix: "ב-250 ₪" -> "במאתיים וחמישים שקלים"
@@ -216,16 +222,34 @@ def _reorder_iso_date(m: re.Match) -> str:
     return f"{day}/{month}/{year}" if 1 <= int(day) <= 31 and 1 <= int(month) <= 12 else m.group(0)
 
 
+def _language_at(text: str, start: int, end: int) -> str:
+    if _in_english(text, start, end)[0]:
+        return "en"
+    return "ar" if _in_arabic(text, start, end) else "he"
+
+
+def _expand_year_range(m: re.Match) -> str:
+    """"1990-2000" -> "nineteen ninety to two thousand", "אלף תשע מאות ותשעים עד אלפיים"."""
+    prefix, first, second = m.groups()
+    start = int(first)
+    end = int(second) if len(second) == 4 else start // 100 * 100 + int(second)
+    if not start < end <= 2099:
+        return m.group(0)
+    lang = _language_at(m.string, m.start(2), m.end(3))
+    if lang == "en":
+        years = [num2words_en(y, to="year") for y in (start, end)]
+    elif lang == "ar":
+        years = [_arabic(y) for y in (start, end)]
+    else:
+        years = [num2words.expand_year(y) for y in (start, end)]
+    return f"{prefix or ''}{years[0]} {RANGE_WORD[lang]} {years[1]}"
+
+
 def _expand_phone(m: re.Match) -> str:
     """"054-123-4567" -> "zero five four, one two three, four five six seven" in English,
     and the same in Hebrew or Arabic words. A number with no separators is grouped 3-3-4."""
     prefix, number = m.groups()
-    if _in_english(m.string, m.start(2), m.end(2))[0]:
-        lang = "en"
-    elif _in_arabic(m.string, m.start(2), m.end(2)):
-        lang = "ar"
-    else:
-        lang = "he"
+    lang = _language_at(m.string, m.start(2), m.end(2))
     groups = re.findall(r"\d+", number)
     if len(groups) == 1:
         digits = groups[0]
@@ -409,6 +433,7 @@ def normalize(text: str) -> str:
     text = _LIST_ITEM.sub(_expand_list_item, text)
     text = _ISO_DATE.sub(_reorder_iso_date, text)
     text = _PHONE.sub(_expand_phone, text)
+    text = _YEAR_RANGE.sub(_expand_year_range, text)
     text = _ARABIC_DATE.sub(_expand_arabic_date, text)
     text = _ARABIC_NUMBER.sub(_expand_arabic_number, text)
     text = _GLUED_NUMBER.sub(_split_glued_number, text)
