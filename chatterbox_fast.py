@@ -18,15 +18,31 @@ BUCKETS = (256, 512, 1024)  # KV lengths a graph attends over; the last is the l
 BATCH = 2  # conditional and unconditional, for CFG
 
 
+# Stop this long (0.9 s) after the attention reaches the end of the text, or the reading can go on
+# with invented words. In 291 readings in 3 languages the last real word ended within 20 frames.
+# This goes by the attention itself: the stock position gets stuck in about 1 Hebrew reading in 4.
+END_FRAMES = 22
+
+
 class _Analyzer(AlignmentStreamAnalyzer):
     """The stock checks, fed by FastT3 instead of by forward hooks on the model."""
+
+    end_frame = None
 
     def _add_attention_spy(self, *_):
         pass
 
     def step(self, logits, next_token=None):
-        i, j = self.text_tokens_slice  # the stock check for repeating skips the last 5 text tokens,
-        return logits if j - i <= 5 else super().step(logits, next_token=next_token)  # so "No." fails
+        i, j = self.text_tokens_slice
+        if j - i <= 5:  # the stock check for repeating skips the last 5 text tokens, so "No." fails
+            return logits
+        logits = super().step(logits, next_token=next_token)
+        if self.end_frame is None and self.alignment[-1].argmax() >= j - i - 3:
+            self.end_frame = self.alignment.shape[0]
+        if self.end_frame is not None and self.alignment.shape[0] - self.end_frame >= END_FRAMES:
+            logits = -(2**15) * torch.ones_like(logits)
+            logits[..., self.eos_idx] = 2**15
+        return logits
 
 
 def _fuse(layers):

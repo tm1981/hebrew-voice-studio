@@ -30,7 +30,7 @@
     "clone": {"en": "Yes", "he": "כן"},
     "speed": {"en": "About 4× real time", "he": "בערך פי 4 מזמן אמת"},
     "memory": {"en": "About 4 GB", "he": "בערך 4 GB"},
-    "tested": {"en": "Has controls for expression and how closely it follows the voice. The fast decode loop picks the same tokens as the stock one (20 of 20 readings).", "he": "יש בו שליטה בהבעה ובקרבה לקול. לולאת הפענוח המהירה בוחרת את אותם טוקנים כמו המקורית (20 מתוך 20 הקראות)."},
+    "tested": {"en": "Has controls for expression and how closely it follows the voice. Stops by itself after the last word: extra words at the end went from 21 to 5 of 132 readings with the built-in voice, and none of 132 with a clone.", "he": "יש בו שליטה בהבעה ובקרבה לקול. עוצר לבד אחרי המילה האחרונה: מילים עודפות בסוף ירדו מ־21 ל־5 מתוך 132 הקראות בקול המובנה, ואף לא אחת מתוך 132 עם קול משובט."},
     "yours": {"en": "Very good in Hebrew and English. Your main model for now.", "he": "טוב מאוד בעברית ובאנגלית. המודל הראשי שלך כרגע."}
   },
   "omnivoice": {
