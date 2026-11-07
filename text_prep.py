@@ -117,6 +117,20 @@ FRACTION_NAMES = {2: "half", 4: "quarter"}
 FRACTION_DENOMINATORS = {2, 3, 4, 5, 6, 7, 8, 9, 12, 16}
 # "2024-03-12", rewritten as "12/03/2024" so the date rule of each language reads it
 _ISO_DATE = re.compile(r"(?<![\w.,/:])(?<!\d-)(\d{4})-(\d{2})-(\d{2})(?![\w/-]|[.,:]\d)")
+# Phone numbers, read digit by digit with a pause between groups: "054-123-4567", "03-6123456",
+# "0541234567", "555-123-4567", "(555) 123-4567", "+972 54 123 4567". Not "10-20" or "1990-2000".
+_PHONE = re.compile(
+    rf"(?<![{HEBREW}\w.,/:+-])(?:([{PREFIXES}]{{1,3}})-)?"
+    r"(\+\d{1,3}(?:[ -]\(?\d{1,4}\)?){1,4}[ -]\d{3,7}|\(\d{2,4}\) ?\d{3,4}-\d{4}|0\d{1,3}-\d{3,7}(?:-\d{3,4})?"
+    r"|\d{3}-\d{3}-\d{4}|0\d{8,9}|\+\d{8,13})"
+    r"(?![\w/-]|[.,:]\d)"
+)
+DIGITS = {
+    "en": ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"),
+    "ar": ("صفر", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة"),
+    "he": tuple(num2words.FEM_UNITS[:10]),
+}
+PLUS = {"en": "plus", "ar": "زائد", "he": "פלוס"}
 _NUMBER = r"\d+(?:[.,]\d+)*"
 _MONEY_AMOUNT = r"(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?"
 # "250 ₪", "₪250", "49.90 שקלים", with an attached prefix: "ב-250 ₪" -> "במאתיים וחמישים שקלים"
@@ -200,6 +214,24 @@ def _expand_date(m: re.Match) -> str:
 def _reorder_iso_date(m: re.Match) -> str:
     year, month, day = m.groups()
     return f"{day}/{month}/{year}" if 1 <= int(day) <= 31 and 1 <= int(month) <= 12 else m.group(0)
+
+
+def _expand_phone(m: re.Match) -> str:
+    """"054-123-4567" -> "zero five four, one two three, four five six seven" in English,
+    and the same in Hebrew or Arabic words. A number with no separators is grouped 3-3-4."""
+    prefix, number = m.groups()
+    if _in_english(m.string, m.start(2), m.end(2))[0]:
+        lang = "en"
+    elif _in_arabic(m.string, m.start(2), m.end(2)):
+        lang = "ar"
+    else:
+        lang = "he"
+    groups = re.findall(r"\d+", number)
+    if len(groups) == 1:
+        digits = groups[0]
+        groups = [digits[:-7], digits[-7:-4], digits[-4:]]
+    words = ("، " if lang == "ar" else ", ").join(" ".join(DIGITS[lang][int(d)] for d in group) for group in groups)
+    return (prefix or "") + (PLUS[lang] + " " if number.startswith("+") else "") + words
 
 
 def _hebrew_count(n: int, one: str, many: str, gender: str) -> str:
@@ -376,6 +408,7 @@ def normalize(text: str) -> str:
         text = pattern.sub(lambda m, r=reading: m.group(1) + r, text)
     text = _LIST_ITEM.sub(_expand_list_item, text)
     text = _ISO_DATE.sub(_reorder_iso_date, text)
+    text = _PHONE.sub(_expand_phone, text)
     text = _ARABIC_DATE.sub(_expand_arabic_date, text)
     text = _ARABIC_NUMBER.sub(_expand_arabic_number, text)
     text = _GLUED_NUMBER.sub(_split_glued_number, text)
