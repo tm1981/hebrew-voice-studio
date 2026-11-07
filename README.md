@@ -366,7 +366,9 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
 - **Read:** type or paste Hebrew, pick a voice, press **Read aloud** (Ctrl+Enter). Sentences
   play as soon as each one is ready. **With niqqud** shows how the engine will read the text.
   **Compare all engines** reads the text with one voice from each engine.
-- **Text tricks:** `[הפסקה 2]` or `[pause 2]` adds a 2-second pause. Turn on **Dialogue** and
+- **Text tricks:** `[הפסקה 2]` or `[pause 2]` adds a 2-second pause. A new line (a heading, a
+  list item) pauses a little longer than the end of a sentence, and a blank line (a new
+  paragraph) longer still: 0.5 and 0.75 seconds with the default pause. Turn on **Dialogue** and
   write lines like `נועה: שלום` to give each speaker its own voice. Numbers, dates, times,
   prices ("49.90 ₪"), phone numbers (digit by digit), fractions ("3/4"), year ranges
   ("1990-2000") and common abbreviations are read as words, in English when the words around

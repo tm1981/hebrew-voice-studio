@@ -9,6 +9,27 @@ import re
 PAUSE = re.compile(r"\[\s*(?:הפסקה|pause)\s*(\d+(?:\.\d+)?)?\s*\]", re.IGNORECASE)
 SPEAKER_LINE = re.compile(r"^\s*([^:\n\[\]]{1,40}?)\s*:\s*(.+)$")
 MAX_PAUSE = 10.0
+# Added to the pause between sentences: after a new line (a heading, a list item, the next
+# speaker) and after a blank line (a new paragraph), so a long text breathes like a person reading.
+LINE_PAUSE = 0.25
+PARAGRAPH_PAUSE = 0.5
+_LINE_BREAK = re.compile(r"[ \t\r]*\n(?:[ \t\r]*\n)*[ \t\r]*")
+
+
+def line_pieces(text: str) -> list[tuple[str, float]]:
+    """The text cut at line breaks: [(piece, extra pause after it)], LINE_PAUSE after a new
+    line, PARAGRAPH_PAUSE after one or more blank lines, nothing after the last piece."""
+    pieces: list[tuple[str, float]] = []
+    last = 0
+    for m in _LINE_BREAK.finditer(text):
+        if text[last : m.start()].strip():
+            pieces.append((text[last : m.start()].strip(), PARAGRAPH_PAUSE if m.group(0).count("\n") > 1 else LINE_PAUSE))
+        last = m.end()
+    if text[last:].strip():
+        pieces.append((text[last:].strip(), 0.0))
+    if pieces:
+        pieces[-1] = (pieces[-1][0], 0.0)
+    return pieces
 
 
 def detect_speakers(text: str) -> list[str]:

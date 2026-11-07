@@ -127,7 +127,7 @@ from engines import (
 from documents import MAX_DOCUMENT_CHARS, Jobs, extract_text, split_chapters, zip_chapters
 from engines import check_recording
 from library import SENTENCE_GAP, Library, MemoryCache, cache_key, to_rate
-from script import detect_speakers, parse
+from script import LINE_PAUSE, detect_speakers, line_pieces, parse
 from stt import BUILTIN_MODELS, DEFAULT_MODEL as DEFAULT_STT_MODEL, SpeechToText, decode_audio
 from text_prep import Dictionary, prepare
 
@@ -434,7 +434,12 @@ def plan(req: TTSRequest) -> list[tuple]:
             items.append(seg)
             continue
         resolve_voice(seg[1])  # 400 now for an unknown voice, not halfway through
-        items += [("speech", seg[1], s) for s in split_sentences(prepare(seg[2], dictionary, req.normalize))]
+        if items and items[-1][0] == "speech":  # the next speaker: a new line
+            items.append(("pause", round(req.sentence_pause + LINE_PAUSE, 2)))
+        for piece, extra in line_pieces(prepare(seg[2], dictionary, req.normalize)):
+            items += [("speech", seg[1], s) for s in split_sentences(piece)]
+            if extra:
+                items.append(("pause", round(req.sentence_pause + extra, 2)))
     if not any(i[0] == "speech" for i in items):
         raise HTTPException(400, "There's no text to read.")
     return items
@@ -466,8 +471,8 @@ def assemble(results: list[tuple], gap: float = SENTENCE_GAP) -> tuple[np.ndarra
     return np.concatenate(parts), rate
 
 
-def silence_wav(seconds: float) -> bytes:
-    return encode(np.zeros(int(24000 * seconds), dtype=np.float32), 24000, "wav")
+def pause_frame(seconds: float) -> bytes:
+    return frame(b"p", json.dumps({"seconds": seconds}).encode())
 
 
 def item_summary(meta: dict) -> list[dict]:
@@ -747,7 +752,8 @@ def tts_stream(req: TTSRequest):
     earlier reading is replayed from there instead of generated again.
 
     Body: frames of 1-byte type + 4-byte big-endian length + payload:
-      a  WAV (16-bit) of one sentence or pause, sent as soon as it's ready
+      a  WAV (16-bit) of one sentence, sent as soon as it's ready
+      p  JSON {"seconds"}: a pause, in place of the gap between sentences (as in the saved file)
       m  JSON {"id", "audio_seconds", "generation_seconds", "cached", "items"} at the end
       f  the whole result in the requested format (for download)
       e  JSON {"detail"} if generation failed part-way
@@ -758,7 +764,7 @@ def tts_stream(req: TTSRequest):
     def replay(meta):
         for n, item in enumerate(meta["items"]):
             if item["kind"] == "pause":
-                yield frame(b"a", silence_wav(item["seconds"]))
+                yield pause_frame(item["seconds"])
             else:
                 audio, sr = library.sentence_audio(meta, n)
                 yield frame(b"a", encode(audio, sr, "wav"))
@@ -778,7 +784,7 @@ def tts_stream(req: TTSRequest):
             for item in items:
                 if item[0] == "pause":
                     results.append({"kind": "pause", "seconds": item[1]})
-                    yield frame(b"a", silence_wav(item[1]))
+                    yield pause_frame(item[1])
                     continue
                 audio, rate = speak_item(item, req)
                 results.append({"kind": "speech", "voice": item[1], "text": item[2], "audio": audio, "sample_rate": rate})

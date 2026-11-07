@@ -2127,7 +2127,7 @@ async function generate(text, voice, { live, onProgress, dialogue = false }) {
     const detail = await r.json().catch(() => ({}));
     throw new Error(typeof detail.detail === "string" ? detail.detail : t("serverError", { code: r.status }));
   }
-  let ctx = null, playAt = 0, sentences = 0, meta = null, blob = null;
+  let ctx = null, playAt = 0, sentences = 0, meta = null, blob = null, afterPause = false;
   if (live) { stopLive(); ctx = liveCtx = new AudioContext(); }
   await readFrames(r, async (kind, payload) => {
     if (kind === "a") {
@@ -2142,6 +2142,17 @@ async function generate(text, voice, { live, onProgress, dialogue = false }) {
         src.start(start);
         playAt = start + buffer.duration + +$("sentencePause").value;
       }
+      afterPause = false;
+    } else if (kind === "p") {
+      // A pause (paragraph, new line, [pause 2]) takes the place of the gap after the sentence before it.
+      sentences++;
+      onProgress?.(sentences);
+      if (ctx && ctx === liveCtx) {
+        const { seconds } = JSON.parse(new TextDecoder().decode(payload));
+        const from = afterPause ? playAt : playAt - +$("sentencePause").value;
+        playAt = Math.max(ctx.currentTime + 0.05, from) + seconds;
+      }
+      afterPause = true;
     } else if (kind === "m") meta = JSON.parse(new TextDecoder().decode(payload));
     else if (kind === "f") blob = new Blob([payload], { type: MIME[fmtNow] || "audio/wav" });
     else if (kind === "e") throw new Error(JSON.parse(new TextDecoder().decode(payload)).detail);
