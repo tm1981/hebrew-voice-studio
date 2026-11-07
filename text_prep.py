@@ -60,6 +60,16 @@ ABBREVIATIONS = {
 }
 
 CURRENCY = {"₪": "שקלים", "$": "דולר", "€": "יורו", "£": "פאונד"}
+# A Hebrew price is read here, not by hebrew-num2words: after "כרטיס" or "מספר" it reads the
+# number digit by digit, and "49.90" came out "ארבעים ותשע תשעים". (one, many, cent one, cents)
+HEBREW_MONEY = {
+    "₪": ("שקל", "שקלים", "אגורה", "אגורות"),
+    "$": ("דולר", "דולר", "סנט", "סנט"),
+    "€": ("יורו", "יורו", "סנט", "סנט"),
+    "£": ("פאונד", "פאונד", "פני", "פני"),
+}
+HEBREW_CURRENCY_WORDS = {"שקל": "₪", "שקלים": "₪", "דולר": "$", "דולרים": "$", "יורו": "€", "פאונד": "£"}
+FEMININE_CENTS = {"אגורה"}
 # Numbers in English ("I am 10 years old") are read in English. The next word in the same
 # sentence decides ("יש לי 3 apples" -> "three apples"), or the one before when the number
 # ends the sentence ("born in 1990."). So does a sentence with English and no Hebrew or Arabic
@@ -108,6 +118,14 @@ FRACTION_DENOMINATORS = {2, 3, 4, 5, 6, 7, 8, 9, 12, 16}
 # "2024-03-12", rewritten as "12/03/2024" so the date rule of each language reads it
 _ISO_DATE = re.compile(r"(?<![\w.,/:])(?<!\d-)(\d{4})-(\d{2})-(\d{2})(?![\w/-]|[.,:]\d)")
 _NUMBER = r"\d+(?:[.,]\d+)*"
+_MONEY_AMOUNT = r"(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?"
+# "250 ₪", "₪250", "49.90 שקלים", with an attached prefix: "ב-250 ₪" -> "במאתיים וחמישים שקלים"
+_HEBREW_MONEY = re.compile(
+    rf"(?<![{HEBREW}\w.,/:])(?:([{PREFIXES}]{{1,3}})-)?"
+    rf"(?:([₪$€£])\s*{_MONEY_AMOUNT}(?![\d\w]|[.,]\d)"
+    rf"|{_MONEY_AMOUNT}(?:\s*([₪$€£])|\s+(שקלים|שקל|דולרים|דולר|יורו|פאונד)(?![{HEBREW}])))"
+)
+_SCALE_CURRENCY = re.compile(r"(מיליון|מיליארד|אלף)\s*([₪$€£])")  # "1.5 מיליון ₪"
 _CURRENCY_AFTER = re.compile(rf"({_NUMBER})\s*([₪$€£])")
 _CURRENCY_BEFORE = re.compile(rf"([₪$€£])\s*({_NUMBER})")
 # An attached prefix ("ב-12/03") joins the expanded words without its hyphen ("בשנים עשר").
@@ -182,6 +200,31 @@ def _expand_date(m: re.Match) -> str:
 def _reorder_iso_date(m: re.Match) -> str:
     year, month, day = m.groups()
     return f"{day}/{month}/{year}" if 1 <= int(day) <= 31 and 1 <= int(month) <= 12 else m.group(0)
+
+
+def _hebrew_count(n: int, one: str, many: str, gender: str) -> str:
+    if n == 1:
+        return f"{one} {num2words.cardinal(1, gender)}"
+    return f"{num2words.cardinal(n, gender, construct=n == 2)} {many}"
+
+
+def _expand_hebrew_money(m: re.Match) -> str:
+    """"49.90 ₪" -> "ארבעים ותשעה שקלים ותשעים אגורות", "1 ₪" -> "שקל אחד"."""
+    prefix, symbol, whole, cents, whole2, cents2, symbol2, word = m.groups()
+    symbol = symbol or symbol2 or HEBREW_CURRENCY_WORDS[word]
+    whole, cents = int((whole or whole2).replace(",", "")), cents or cents2
+    if whole >= 1_000_000:  # past what cardinal() reads; the general rules below still do
+        return m.group(0)
+    one, many, cent_one, cent_many = HEBREW_MONEY[symbol]
+    if word and whole != 1:
+        many = word  # "3 דולרים" stays "דולרים"
+    parts = []
+    if whole or not cents or not int(cents):
+        parts.append(_hebrew_count(whole, one, many, num2words.MASC))
+    if cents and int(cents):
+        gender = num2words.FEM if cent_one in FEMININE_CENTS else num2words.MASC
+        parts.append(_hebrew_count(int(cents.ljust(2, "0")), cent_one, cent_many, gender))
+    return (prefix or "") + " ו".join(parts)
 
 
 def _in_english(text: str, start: int, end: int) -> tuple[bool, str]:
@@ -339,6 +382,8 @@ def normalize(text: str) -> str:
     text = _ENGLISH_DATE.sub(_expand_english_date, text)
     text = _ENGLISH_PAIR.sub(_expand_english_pair, text)
     text = _ENGLISH_NUMBER.sub(_expand_english, text)
+    text = _HEBREW_MONEY.sub(_expand_hebrew_money, text)
+    text = _SCALE_CURRENCY.sub(lambda m: f"{m.group(1)} {CURRENCY[m.group(2)]}", text)
     text = _CURRENCY_BEFORE.sub(lambda m: f"{m.group(2)} {CURRENCY[m.group(1)]}", text)
     text = _CURRENCY_AFTER.sub(lambda m: f"{m.group(1)} {CURRENCY[m.group(2)]}", text)
     text = _DATE.sub(_expand_date, text)
