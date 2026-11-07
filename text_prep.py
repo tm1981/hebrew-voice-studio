@@ -96,11 +96,17 @@ _SENTENCE_END = re.compile(r"[.!?؟]\s")
 _GLUED_NUMBER = re.compile(r"(?<!\w)(?:\d+(?:\.\d+)?[A-Za-z]|[A-Za-z]+\d)[A-Za-z\d]*(?!\w)")
 _GLUED_PARTS = re.compile(r"\d+(?:\.\d+)?|[A-Za-z]+")
 _ORDINAL = re.compile(r"\d+(?:st|nd|rd|th)")
-_LIST_ITEM = re.compile(r"^[ 	]*(\d{1,3})\.[ 	]+(\S.*?)[ 	]*$", re.M)
+_LIST_ITEM = re.compile(r"^[ \t]*(\d{1,3})\.[ \t]+(\S(?:.*\S)?)[ \t]*$", re.M)
 _DECADE = re.compile(r"(\d{1,3}0)s")
-# "24/7", "50/50", "3/4", once _ENGLISH_DATE has taken the dates
+ROUND_PLURAL = {"100": "hundreds", "1000": "thousands"}  # "1000s of people", not "one thousands"
+# "24/7", "50/50", "3/4", "1 1/2", once _ENGLISH_DATE has taken the dates
 CLOCK = {"am": "A M", "pm": "P M"}  # read as letters: "ten am" came out as "tenement"
-_ENGLISH_PAIR = re.compile(r"(?<![\w.,/:])(\d+)/(\d+)(?![\w/]|[.,:]\d)")
+_ENGLISH_PAIR = re.compile(r"(?<![\w.,/:])(?:(\d{1,2}) )?(\d+)/(\d+)(?![\w/]|[.,:]\d)")
+FRACTION_NAMES = {2: "half", 4: "quarter"}
+# Tenths are left out: "8/10" is usually a score, not a fraction.
+FRACTION_DENOMINATORS = {2, 3, 4, 5, 6, 7, 8, 9, 12, 16}
+# "2024-03-12", rewritten as "12/03/2024" so the date rule of each language reads it
+_ISO_DATE = re.compile(r"(?<![\w.,/:])(?<!\d-)(\d{4})-(\d{2})-(\d{2})(?![\w/-]|[.,:]\d)")
 _NUMBER = r"\d+(?:[.,]\d+)*"
 _CURRENCY_AFTER = re.compile(rf"({_NUMBER})\s*([₪$€£])")
 _CURRENCY_BEFORE = re.compile(rf"([₪$€£])\s*({_NUMBER})")
@@ -171,6 +177,11 @@ def _expand_date(m: re.Match) -> str:
     if len(m.group(4)) == 2:
         year += 2000
     return prefix + num2words.expand_date(day, month, year)
+
+
+def _reorder_iso_date(m: re.Match) -> str:
+    year, month, day = m.groups()
+    return f"{day}/{month}/{year}" if 1 <= int(day) <= 31 and 1 <= int(month) <= 12 else m.group(0)
 
 
 def _in_english(text: str, start: int, end: int) -> tuple[bool, str]:
@@ -256,16 +267,30 @@ def _split_glued_number(m: re.Match) -> str:
         return word
     decade = _DECADE.fullmatch(word)
     if decade:
+        if decade.group(1) in ROUND_PLURAL:
+            return ROUND_PLURAL[decade.group(1)]
         words = num2words_en(int(decade.group(1)), to="year")
         return words[:-1] + "ies" if words.endswith("y") else words + "s"
     return " ".join(CLOCK.get(part.lower(), part) for part in _GLUED_PARTS.findall(word))
 
 
+def _english_fraction(a: int, b: int, mixed: bool) -> str | None:
+    """"3/4" -> "three quarters", "1 1/2" -> "and a half"; None when it isn't a fraction."""
+    if a >= b or b not in FRACTION_DENOMINATORS:
+        return None
+    name = FRACTION_NAMES.get(b) or num2words_en(b, to="ordinal")
+    if a > 1:
+        name = "halves" if name == "half" else name + "s"
+    count = "a" if mixed and a == 1 else num2words_en(a)
+    return f"{'and ' if mixed else ''}{count} {name}"
+
+
 def _expand_english_pair(m: re.Match) -> str:
     if not _in_english(m.string, m.start(), m.end())[0]:
         return m.group(0)
-    a, b = int(m.group(1)), int(m.group(2))
-    return f"{num2words_en(a)}{' over ' if a < b else ' '}{num2words_en(b)}"
+    whole, a, b = m.group(1), int(m.group(2)), int(m.group(3))
+    words = _english_fraction(a, b, bool(whole)) or f"{num2words_en(a)}{' over ' if a < b else ' '}{num2words_en(b)}"
+    return f"{num2words_en(int(whole))} {words}" if whole else words
 
 
 def _english_count(n: int, unit: str) -> str:
@@ -307,6 +332,7 @@ def normalize(text: str) -> str:
     for pattern, reading in _ABBREVIATION_PATTERNS:
         text = pattern.sub(lambda m, r=reading: m.group(1) + r, text)
     text = _LIST_ITEM.sub(_expand_list_item, text)
+    text = _ISO_DATE.sub(_reorder_iso_date, text)
     text = _ARABIC_DATE.sub(_expand_arabic_date, text)
     text = _ARABIC_NUMBER.sub(_expand_arabic_number, text)
     text = _GLUED_NUMBER.sub(_split_glued_number, text)
