@@ -30,8 +30,8 @@ a cloud service.
 | **Zonos-Hebrew** | GPU, Docker on another machine | default | yes | Optional, off by default. Hebrew only; has emotions. |
 
 Chatterbox also reads Arabic. It finds Arabic by itself in each sentence, so there's nothing to
-choose, and Hebrew, English and Arabic sentences can share one text. Numbers, dates and times
-in Arabic sentences become Arabic words. The other engines haven't been tested with Arabic.
+choose, and Hebrew, English and Arabic sentences can share one text. Numbers, dates, times
+and phone numbers in Arabic sentences become Arabic words. The other engines haven't been tested with Arabic.
 
 English words inside Hebrew text, and English-only text, are read by every engine except
 Zonos, which reads Hebrew only, and F5-TTS, which reads a sentence in Hebrew or in English but
@@ -367,9 +367,11 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
   play as soon as each one is ready. **With niqqud** shows how the engine will read the text.
   **Compare all engines** reads the text with one voice from each engine.
 - **Text tricks:** `[הפסקה 2]` or `[pause 2]` adds a 2-second pause. Turn on **Dialogue** and
-  write lines like `נועה: שלום` to give each speaker its own voice. Numbers, dates, prices and
-  common abbreviations are read as words, in English when the words around a number are
-  English ("I am 10 years old", "on 12/03/2025"). Niqqud you type is respected word by word.
+  write lines like `נועה: שלום` to give each speaker its own voice. Numbers, dates, times,
+  prices ("49.90 ₪"), phone numbers (digit by digit), fractions ("3/4"), year ranges
+  ("1990-2000") and common abbreviations are read as words, in English when the words around
+  a number are English ("I am 10 years old", "on 12/03/2025"). Niqqud you type is respected
+  word by word.
 - **Sentences** (button on the player): replay, re-read or edit one sentence; the full file is
   rebuilt.
 - **Library:** every reading, kept across restarts, with search and download (WAV, MP3, FLAC, Opus).
@@ -519,6 +521,7 @@ sits inside a volume. The backup holds the API key, so keep it private. From scr
 | `workers/` | The GPU engines' servers, each run in its own conda env. |
 | `engine_info.json` | What each engine can do, from tests and listening: the page's engine info box. |
 | `text_prep.py`, `niqqud.py`, `script.py` | Hebrew normalization, niqqud handling, pauses and dialogue. |
+| `tests/` | Checks for how text becomes words; run `python -m unittest discover tests`. |
 | `library.py`, `documents.py` | Saved readings and long-document jobs. |
 | `backup.py`, `wyoming_service.py` | Backup/restore of your data; the Wyoming server for Home Assistant. |
 | `chatterbox_fixes.py` | Fixes that make Chatterbox stable on Hebrew. |

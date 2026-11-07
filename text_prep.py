@@ -92,6 +92,8 @@ _WORD_BEFORE = re.compile(rf"([{HEBREW}A-Za-z][{HEBREW}{MARKS}A-Za-z'’]*)[^{HE
 _WORD_AFTER = re.compile(rf"^[^{HEBREW}A-Za-z.!?\n]*([{HEBREW}A-Za-z])")
 _LATIN = re.compile(r"[A-Za-z]")
 ARABIC = "ء-ي"
+ARABIC_DUALS = {"مئتا", "ألفا", "مليونا", "مليارا"}
+_ARABIC_WORD_NEXT = re.compile(r"[ \t]*[ء-ي]")
 ARABIC_CURRENCY = {"₪": "شيكل", "$": "دولار", "€": "يورو", "£": "جنيه"}
 ARABIC_MONTHS = ("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو",
                  "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر")
@@ -313,8 +315,13 @@ def _in_arabic(text: str, start: int, end: int) -> bool:
     return bool(letter and _ARABIC_LETTER.match(letter.group(1)))
 
 
-def _arabic(n: int) -> str:
-    return num2words_en(n, lang="ar")
+def _arabic(n: int, alone: bool = True) -> str:
+    """num2words ends 200, 2000, 2,000,000 with the form used before a noun ("مئتا كتاب");
+    a number on its own, like a year, is "ألفان". Inside a number ("مئتا ألف") it stays short."""
+    words = num2words_en(n, lang="ar").split(" ")
+    if alone and words[-1] in ARABIC_DUALS:
+        words[-1] += "ن"
+    return " ".join(words)
 
 
 def _expand_arabic_date(m: re.Match) -> str:
@@ -329,7 +336,8 @@ def _expand_arabic_number(m: re.Match) -> str:
         return m.group(0)
     cur_before, number, minutes, percent, cur_after = m.groups()
     whole, _, fraction = number.replace(",", "").partition(".")
-    words = _arabic(int(whole))
+    before_noun = bool(cur_before or cur_after or percent or _ARABIC_WORD_NEXT.match(m.string, m.end()))
+    words = _arabic(int(whole), alone=bool(fraction or minutes) or not before_noun)
     if minutes:
         words += " و " + _arabic(int(minutes)) if int(minutes) else ""
     if fraction:
