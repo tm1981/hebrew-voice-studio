@@ -96,6 +96,7 @@ _SENTENCE_END = re.compile(r"[.!?؟]\s")
 _GLUED_NUMBER = re.compile(r"(?<!\w)(?:\d+(?:\.\d+)?[A-Za-z]|[A-Za-z]+\d)[A-Za-z\d]*(?!\w)")
 _GLUED_PARTS = re.compile(r"\d+(?:\.\d+)?|[A-Za-z]+")
 _ORDINAL = re.compile(r"\d+(?:st|nd|rd|th)")
+_LIST_ITEM = re.compile(r"^[ 	]*(\d{1,3})\.[ 	]+(\S.*?)[ 	]*$", re.M)
 _DECADE = re.compile(r"(\d{1,3}0)s")
 # "24/7", "50/50", "3/4", once _ENGLISH_DATE has taken the dates
 CLOCK = {"am": "A M", "pm": "P M"}  # read as letters: "ten am" came out as "tenement"
@@ -240,6 +241,14 @@ def _expand_english_date(m: re.Match) -> str:
     return words
 
 
+def _expand_list_item(m: re.Match) -> str:
+    """"2. Open the app" -> "2: Open the app.": a number alone as a sentence often comes out
+    garbled, and an item with no full stop runs into the next item's number. Of colon, comma,
+    dash and semicolon, Whisper heard the number best after a colon: 12 of 12 with a clone."""
+    number, item = m.groups()
+    return f"{number}: {item}" + ("" if item[-1] in ".!?؟…:;," else ".")
+
+
 def _split_glued_number(m: re.Match) -> str:
     """"16GB" -> "16 GB", so the number gets read; only in English, "1990s" -> "nineteen nineties"."""
     word = m.group(0)
@@ -297,6 +306,7 @@ def normalize(text: str) -> str:
     number in those languages, Hebrew for the rest."""
     for pattern, reading in _ABBREVIATION_PATTERNS:
         text = pattern.sub(lambda m, r=reading: m.group(1) + r, text)
+    text = _LIST_ITEM.sub(_expand_list_item, text)
     text = _ARABIC_DATE.sub(_expand_arabic_date, text)
     text = _ARABIC_NUMBER.sub(_expand_arabic_number, text)
     text = _GLUED_NUMBER.sub(_split_glued_number, text)
