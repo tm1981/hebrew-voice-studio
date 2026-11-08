@@ -146,8 +146,9 @@
   .seg button[aria-pressed="true"] { background: var(--raised); color: #fff; }
 
   /* Read view */
-  .read { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; height: 100%; max-width: 1180px; }
-  .editor-col { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .read { display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: 100%; gap: 20px; height: 100%; max-width: 1180px; }
+  /* one screen tall and pinned, so the Read button under the text stays in view while the settings scroll */
+  .editor-col { display: flex; flex-direction: column; gap: 10px; min-height: 0; position: sticky; top: 0; }
   .editor-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .editor { flex: 1; display: flex; min-height: 320px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
   .editor:focus-within { border-color: var(--line-strong); }
@@ -173,7 +174,7 @@
   .advanced-body { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
   .speakers { display: flex; flex-direction: column; gap: 6px; }
   .speakers label { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; align-items: center; font-size: 13px; }
-  .speak { width: 100%; justify-content: space-between; padding: 12px 16px; font-size: 15px; border-radius: 10px; }
+  .speak { align-self: flex-end; min-width: 260px; justify-content: space-between; padding: 12px 16px; font-size: 15px; border-radius: 10px; }
   .speak kbd { font: 400 11.5px var(--ui); opacity: .65; direction: ltr; }
   .reset { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--faint); font-size: 12px; cursor: pointer; text-decoration: underline; }
 
@@ -294,8 +295,9 @@
 
   @media (max-width: 1000px) {
     .read, .two-col { grid-template-columns: minmax(0, 1fr); }
-    .read { height: auto; }
-    .settings { position: static; }
+    .read { height: auto; grid-template-rows: auto; }
+    .settings, .editor-col { position: static; }
+    .speak { align-self: stretch; }
     .editor { min-height: 260px; }
   }
   @media (max-width: 760px) {
@@ -398,6 +400,7 @@
           <div class="niqqud" id="niqqud" dir="rtl" hidden aria-live="polite"></div>
         </div>
         <div class="editor-foot"><span data-i18n="hint"></span><span id="count"></span></div>
+        <button type="button" class="btn primary speak" id="speak"><span data-i18n="speak"></span><kbd>Ctrl+Enter</kbd></button>
       </div>
 
       <aside class="panel settings">
@@ -452,7 +455,6 @@
             <button type="button" class="reset" id="reset" data-i18n="reset"></button>
           </div>
         </details>
-        <button type="button" class="btn primary speak" id="speak"><span data-i18n="speak"></span><kbd>Ctrl+Enter</kbd></button>
       </aside>
     </section>
 
@@ -786,6 +788,8 @@ const STR = {
     deleteVoiceConfirm: "Delete the voice “{name}” from all engines?", voiceDeleted: "The voice “{name}” was deleted.",
     cantDelete: "Couldn't delete the voice.", deleteVoice: "Delete the voice {name}", voiceCount: "{n} voices",
     editVoice: "Edit the voice {name}", downloadVoice: "Download the recordings of {name}", editTitle: "Edit a voice",
+    previewVoice: "Hear {name}", previewing: "Reading a sample with {name}…",
+    previewText: "שלום, ככה נשמע הקול הזה כשהוא מקריא טקסט.", previewTextEnglish: "Hello, this is how this voice sounds when it reads.",
     editHelp: "The voice's saved recordings. Add, trim or remove recordings, then save: the voice is rebuilt from the recordings here, in every engine.",
     newVoice: "Add a new voice instead", loadingVoice: "Loading “{name}”…", cantLoadVoice: "Couldn't load the recordings of “{name}”.",
     heard: "Heard: {text}", heardNothing: "No speech heard.",
@@ -976,6 +980,8 @@ const STR = {
     deleteVoiceConfirm: "למחוק את הקול \"{name}\" מכל המנועים?", voiceDeleted: "הקול \"{name}\" נמחק.",
     cantDelete: "לא ניתן למחוק את הקול.", deleteVoice: "מחיקת הקול {name}", voiceCount: "{n} קולות",
     editVoice: "עריכת הקול {name}", downloadVoice: "הורדת ההקלטות של {name}", editTitle: "עריכת קול",
+    previewVoice: "השמעת {name}", previewing: "מקריא דוגמה עם {name}…",
+    previewText: "שלום, ככה נשמע הקול הזה כשהוא מקריא טקסט.", previewTextEnglish: "Hello, this is how this voice sounds when it reads.",
     editHelp: "ההקלטות השמורות של הקול. אפשר להוסיף, לקצר או למחוק הקלטות ואז לשמור: הקול נבנה מחדש מההקלטות שכאן, בכל המנועים.",
     newVoice: "הוספת קול חדש במקום", loadingVoice: "טוען את \"{name}\"…", cantLoadVoice: "לא ניתן לטעון את ההקלטות של \"{name}\".",
     heard: "נשמע: {text}", heardNothing: "לא נשמע דיבור.",
@@ -1849,6 +1855,12 @@ function renderVoiceList() {
       const li = document.createElement("li"), chosen = v.id === voiceSel.value;
       li.innerHTML = `<span class="grow"></span><span class="tag ${v.builtin ? "" : "accent"}">${v.builtin ? t("builtin") : t("custom")}</span>`;
       li.querySelector(".grow").textContent = voiceLabel(v);
+      const hear = document.createElement("button");
+      hear.type = "button"; hear.className = "btn icon-btn"; hear.title = t("previewVoice", { name: voiceLabel(v) });
+      hear.setAttribute("aria-label", hear.title);
+      hear.innerHTML = '<svg><use href="#i-play"/></svg>';
+      hear.addEventListener("click", () => previewVoice(v, hear));
+      li.append(hear);
       const use = document.createElement("button");
       use.type = "button"; use.className = "btn" + (chosen ? " primary" : "");
       use.textContent = chosen ? t("inUse") : t("use");
@@ -1876,6 +1888,37 @@ function renderVoiceList() {
       block.querySelector("ul").append(li);
     }
     box.append(block);
+  }
+}
+// The play button on a voice: a short sentence read with that voice (cached, so a second play is instant).
+let previewAudio = null, previewButton = null;
+function showPreviewPlaying(button, playing) {
+  button.querySelector("use").setAttribute("href", playing ? "#i-pause" : "#i-play");
+}
+async function previewVoice(v, button) {
+  const again = previewButton === button && previewAudio && !previewAudio.paused;
+  previewAudio?.pause();
+  if (previewButton) showPreviewPlaying(previewButton, false);
+  if (again) return;  // a second click stops it
+  audio.pause();
+  sentenceAudio?.pause();
+  button.disabled = true;
+  setStatus(t("previewing", { name: voiceLabel(v) }), false, true);
+  try {
+    const text = t(v.english_only ? "previewTextEnglish" : "previewText");
+    const r = await postJSON("/tts", { text, voice: v.id, format: "mp3", use_cache: true });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || t("serverError", { code: r.status }));
+    previewAudio = new Audio(URL.createObjectURL(await r.blob()));
+    previewButton = button;
+    previewAudio.addEventListener("ended", () => showPreviewPlaying(button, false));
+    setStatus("");
+    showPreviewPlaying(button, true);
+    await previewAudio.play();
+  } catch (e) {
+    showPreviewPlaying(button, false);
+    setStatus(e.message, true);
+  } finally {
+    button.disabled = false;
   }
 }
 // Editing loads the voice's saved recordings into the form; saving under the same name replaces the voice.
