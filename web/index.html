@@ -826,6 +826,7 @@ const STR = {
     "issue.unreadable": "couldn't read the file.",
     wordsHelp: "Words an engine says wrong: write how to read them, with niqqud or phonetically. The fix applies to every engine, and also to the word with prefixes like ו, ה, ב, ל (for words of three letters or more).",
     wordPh: "Word, e.g. Claude", readingPh: "Read as, e.g. קלוד", add: "Add", dictEmpty: "The dictionary is empty.",
+    hearWord: "Hear how “{word}” is read", previewingWord: "Reading “{word}” with {voice}…",
     needBoth: "Write both the word and how to read it.", cantSave: "Couldn't save the word.", wordSaved: "“{w}” will now be read as “{r}”.",
     refresh: "Refresh", engine: "Engine", runs: "Runs", state: "State", voicesCol: "Voices",
     "where.local": "On this PC", "where.worker": "Separate process", "where.remote": "Another machine", "where.stt": "Speech-to-text", sttLabel: "Hebrew speech recognition (Whisper)",
@@ -1020,6 +1021,7 @@ const STR = {
     "issue.unreadable": "לא ניתן לקרוא את הקובץ.",
     wordsHelp: "מילים שמנוע כלשהו מבטא לא נכון: כתבו איך לקרוא אותן, עם ניקוד או בכתיב פונטי. התיקון חל על כל המנועים, וגם על המילה עם תחיליות כמו ו, ה, ב, ל (במילים של שלוש אותיות ומעלה).",
     wordPh: "המילה, למשל: Claude", readingPh: "איך לקרוא, למשל: קלוד", add: "הוספה", dictEmpty: "המילון ריק.",
+    hearWord: "השמעת \"{word}\" כפי שיוקרא", previewingWord: "מקריא את \"{word}\" עם {voice}…",
     needBoth: "כתבו גם את המילה וגם איך לקרוא אותה.", cantSave: "לא ניתן לשמור את המילה.", wordSaved: "\"{w}\" יוקרא מעכשיו \"{r}\".",
     refresh: "רענון", engine: "מנוע", runs: "היכן רץ", state: "מצב", voicesCol: "קולות",
     "where.local": "במחשב הזה", "where.worker": "תהליך נפרד", "where.remote": "מחשב אחר", "where.stt": "זיהוי דיבור", sttLabel: "זיהוי דיבור בעברית (Whisper)",
@@ -1910,7 +1912,11 @@ let previewAudio = null, previewButton = null;
 function showPreviewPlaying(button, playing) {
   button.querySelector("use").setAttribute("href", playing ? "#i-pause" : "#i-play");
 }
-async function previewVoice(v, button) {
+function previewVoice(v, button) {
+  return playSample(t(v.english_only ? "previewTextEnglish" : "previewText"), v.id, button, t("previewing", { name: voiceLabel(v) }));
+}
+// Reads a short text with one voice and plays it; the voice and dictionary play buttons use it.
+async function playSample(text, voiceId, button, status) {
   const again = previewButton === button && previewAudio && !previewAudio.paused;
   previewAudio?.pause();
   if (previewButton) showPreviewPlaying(previewButton, false);
@@ -1918,10 +1924,9 @@ async function previewVoice(v, button) {
   audio.pause();
   sentenceAudio?.pause();
   button.disabled = true;
-  setStatus(t("previewing", { name: voiceLabel(v) }), false, true);
+  setStatus(status, false, true);
   try {
-    const text = t(v.english_only ? "previewTextEnglish" : "previewText");
-    const r = await postJSON("/tts", { text, voice: v.id, format: "mp3", use_cache: true });
+    const r = await postJSON("/tts", { text, voice: voiceId, format: "mp3", use_cache: true });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || t("serverError", { code: r.status }));
     previewAudio = new Audio(URL.createObjectURL(await r.blob()));
     previewButton = button;
@@ -2124,11 +2129,17 @@ function renderLexicon(entries) {
     const li = document.createElement("li");
     li.className = "dict-row";
     li.innerHTML = `<span class="word" dir="auto"></span><span class="arrow">${lang === "he" ? "←" : "→"}</span><span class="reading" dir="auto"></span>
+      <button type="button" class="btn icon-btn hear"><svg><use href="#i-play"/></svg></button>
       <button type="button" class="btn icon-btn danger"><svg><use href="#i-trash"/></svg></button>`;
     li.querySelector(".word").textContent = word;
     li.querySelector(".reading").textContent = entries[word];
-    li.querySelector("button").setAttribute("aria-label", word);
-    li.querySelector("button").addEventListener("click", async () => {
+    // The word goes through the dictionary on the server, so this is how a reading will say it.
+    const hear = li.querySelector("button.hear");
+    hear.title = t("hearWord", { word });
+    hear.setAttribute("aria-label", hear.title);
+    hear.addEventListener("click", () => playSample(word, voiceSel.value, hear, t("previewingWord", { word, voice: voiceText(voiceSel.value) })));
+    li.querySelector("button.danger").setAttribute("aria-label", word);
+    li.querySelector("button.danger").addEventListener("click", async () => {
       const r = await api(`/pronunciations/${encodeURIComponent(word)}`, { method: "DELETE" });
       if (r.ok) renderLexicon(await r.json());
     });
