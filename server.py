@@ -794,7 +794,9 @@ def tts_stream(req: TTSRequest):
 
     Body: frames of 1-byte type + 4-byte big-endian length + payload:
       a  WAV (16-bit) of one sentence, sent as soon as it's ready
+      r  JSON {"items": [{"kind", "text"}], "readalong"} first: what will be read, for marking it live
       p  JSON {"seconds"}: a pause, in place of the gap between sentences (as in the saved file)
+      w  JSON {"item", "words"} after a sentence's audio, with "word_timing": when each word starts and ends
       m  JSON {"id", "audio_seconds", "generation_seconds", "cached", "items"} at the end
       f  the whole result in the requested format (for download)
       e  JSON {"detail"} if generation failed part-way
@@ -802,13 +804,19 @@ def tts_stream(req: TTSRequest):
     items = plan(req)
     key = request_key(req, items)
 
+    def outline(listed, marks):
+        return frame(b"r", json.dumps({"items": listed, "readalong": marks}, ensure_ascii=False).encode())
+
     def replay(meta):
+        yield outline([{"kind": i["kind"], "text": i.get("text")} for i in meta["items"]], meta.get("readalong"))
         for n, item in enumerate(meta["items"]):
             if item["kind"] == "pause":
                 yield pause_frame(item["seconds"])
             else:
                 audio, sr = library.sentence_audio(meta, n)
                 yield frame(b"a", encode(audio, sr, "wav"))
+                if item.get("words"):
+                    yield frame(b"w", json.dumps({"item": n, "words": item["words"]}).encode())
         yield from finish(meta, cached=True)
 
     def finish(meta, cached):
@@ -820,24 +828,28 @@ def tts_stream(req: TTSRequest):
 
     def generate():
         t0 = time.perf_counter()
-        results = []
+        results, marks = [], readalong(req, items)
+        yield outline([{"kind": i[0], "text": i[2] if i[0] == "speech" else None} for i in items], marks)
         try:
-            for item in items:
+            for n, item in enumerate(items):
                 if item[0] == "pause":
                     results.append({"kind": "pause", "seconds": item[1]})
                     yield pause_frame(item[1])
                     continue
                 audio, rate = speak_item(item, req)
                 yield frame(b"a", encode(audio, rate, "wav"))  # heard first; the words are timed while it plays
+                words = time_words(req, audio, rate, item[2])
                 results.append({"kind": "speech", "voice": item[1], "text": item[2], "audio": audio, "sample_rate": rate,
-                                "words": time_words(req, audio, rate, item[2])})
+                                "words": words})
+                if words:
+                    yield frame(b"w", json.dumps({"item": n, "words": words}).encode())
         except HTTPException as e:
             yield frame(b"e", json.dumps({"detail": e.detail}).encode())
             return
         meta = library.save(
             title=req.text.strip().split("\n")[0][:60], kind="dialogue" if req.dialogue else "reading",
             text=req.text, voice=req.voice, settings=req.settings(), items=results,
-            generation_seconds=time.perf_counter() - t0, key=key, readalong=readalong(req, items),
+            generation_seconds=time.perf_counter() - t0, key=key, readalong=marks,
         )
         yield from finish(meta, cached=False)
 

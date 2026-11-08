@@ -2178,10 +2178,12 @@ function wordAt(item, into) {
   return w;
 }
 function markReading() {
-  if (!current || $("readalong").hidden || !readPieces.length) return;
-  const items = current.meta.items, now = audio.currentTime;
+  if ($("readalong").hidden || !readPieces.length) return;
+  const live = liveRead && liveRead.ctx === liveCtx;  // a reading playing live, as it's made
+  if (!live && !current) return;
+  const items = live ? liveRead.items : current.meta.items, now = live ? liveCtx.currentTime : audio.currentTime;
   let k = -1;
-  if (items.some(i => i.start != null)) items.forEach((it, i) => { if (it.start != null && it.start <= now + 0.02) k = i; });
+  if (live || items.some(i => i.start != null)) items.forEach((it, i) => { if (it.start != null && it.start <= now + 0.02) k = i; });
   else k = currentIndex();
   const item = items[k];
   const at = item && item.kind === "speech" && now > 0 ? [k, wordAt(item, now - (item.start ?? itemBounds()[k]?.[0] ?? 0))] : null;
@@ -2243,10 +2245,19 @@ $("lexReading").addEventListener("keydown", e => { if (e.key === "Enter") $("lex
 
 // ---------- Generate ----------
 // /tts/stream sends frames: 1-byte type, 4-byte big-endian length, payload.
-// "a" = one sentence of WAV (played live), "m" = JSON summary, "f" = whole file, "e" = error.
+// "r" = what will be read (for follow along), "a" = one sentence of WAV (played live), "p" = a pause,
+// "w" = a sentence's word times, "m" = JSON summary, "f" = whole file, "e" = error.
 let liveCtx = null;  // Web Audio context playing the sentences of the current request
+let liveRead = null; // {ctx, items, end}: the live reading's items with when each starts, for follow along
 function stopLive() {
   if (liveCtx) { liveCtx.close().catch(() => {}); liveCtx = null; }
+  liveRead = null;
+}
+function liveLoop() {
+  if (!liveRead || liveRead.ctx !== liveCtx) return;
+  markReading();
+  if (liveRead.done && liveCtx.currentTime > liveRead.end + 0.5) { liveRead = null; return; }
+  setTimeout(liveLoop, 50);  // a timer, not an animation frame: keeps marking in a background tab
 }
 async function readFrames(response, onFrame) {
   const reader = response.body.getReader();
@@ -2278,10 +2289,19 @@ async function generate(text, voice, { live, onProgress, dialogue = false }) {
     const detail = await r.json().catch(() => ({}));
     throw new Error(typeof detail.detail === "string" ? detail.detail : t("serverError", { code: r.status }));
   }
-  let ctx = null, playAt = 0, sentences = 0, meta = null, blob = null, afterPause = false;
+  let ctx = null, playAt = 0, sentences = 0, meta = null, blob = null, afterPause = false, n = 0;
   if (live) { stopLive(); ctx = liveCtx = new AudioContext(); }
+  const json = payload => JSON.parse(new TextDecoder().decode(payload));
+  const following = () => ctx && ctx === liveCtx && liveRead?.ctx === ctx;
   await readFrames(r, async (kind, payload) => {
-    if (kind === "a") {
+    if (kind === "r") {
+      if (!ctx || ctx !== liveCtx) return;
+      const data = json(payload);
+      liveRead = { ctx, items: data.items.map(i => ({ ...i })), end: 0, done: false };
+      renderReadalong(data);
+      if (data.readalong && document.activeElement !== textEl) showRead();
+      liveLoop();
+    } else if (kind === "a") {
       sentences++;
       onProgress?.(sentences);
       if (ctx && ctx === liveCtx) {
@@ -2292,23 +2312,34 @@ async function generate(text, voice, { live, onProgress, dialogue = false }) {
         const start = Math.max(ctx.currentTime + 0.05, playAt);
         src.start(start);
         playAt = start + buffer.duration + +$("sentencePause").value;
+        if (following() && liveRead.items[n]) {
+          Object.assign(liveRead.items[n], { start, seconds: buffer.duration });
+          liveRead.end = start + buffer.duration;
+        }
       }
+      n++;
       afterPause = false;
     } else if (kind === "p") {
       // A pause (paragraph, new line, [pause 2]) takes the place of the gap after the sentence before it.
       sentences++;
       onProgress?.(sentences);
       if (ctx && ctx === liveCtx) {
-        const { seconds } = JSON.parse(new TextDecoder().decode(payload));
+        const { seconds } = json(payload);
         const from = afterPause ? playAt : playAt - +$("sentencePause").value;
         playAt = Math.max(ctx.currentTime + 0.05, from) + seconds;
+        if (following() && liveRead.items[n]) liveRead.items[n].start = playAt - seconds;
       }
+      n++;
       afterPause = true;
-    } else if (kind === "m") meta = JSON.parse(new TextDecoder().decode(payload));
+    } else if (kind === "w") {
+      const { item, words } = json(payload);
+      if (following() && liveRead.items[item]) liveRead.items[item].words = words;
+    } else if (kind === "m") meta = json(payload);
     else if (kind === "f") blob = new Blob([payload], { type: MIME[fmtNow] || "audio/wav" });
     else if (kind === "e") throw new Error(JSON.parse(new TextDecoder().decode(payload)).detail);
   });
   if (!blob || !meta) throw new Error(t("cutOff"));
+  if (following()) liveRead.done = true;
   return { meta, blob };
 }
 
