@@ -189,6 +189,12 @@
   .lib-row .sub { color: var(--muted); font-size: 12.5px; }
   .lib-row .play-sm { border-radius: 50%; }
   .lib-check { width: 17px; height: 17px; flex: none; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .lib-toolbar { flex-wrap: wrap; }
+  .lib-toolbar select { width: auto; max-width: 220px; }
+  .lib-group { gap: 10px; margin-inline-start: auto; font-size: 13px; color: var(--muted); }
+  .list > li.lib-version { padding-inline-start: 44px; background: var(--raised); }
+  .lib-versions { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+  .lib-versions:hover { text-decoration: underline; }
   .lib-bulk { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
   .lib-bulk[hidden] { display: none; }
   .lib-bulk label { display: inline-flex; align-items: center; gap: 12px; cursor: pointer; }
@@ -461,7 +467,12 @@
     <!-- Library -->
     <section class="view" data-view="library" hidden>
       <div class="view-head"><div><h1 data-i18n="nav.library"></h1><p data-i18n="libraryHelp"></p></div></div>
-      <div class="toolbar"><input type="search" id="libSearch" data-i18n-placeholder="search"></div>
+      <div class="toolbar lib-toolbar">
+        <input type="search" id="libSearch" data-i18n-placeholder="search">
+        <select id="libEngine" data-i18n-title="allEngines"></select>
+        <select id="libVoice" data-i18n-title="allVoices"></select>
+        <label class="switch lib-group"><span data-i18n="groupSame"></span><input type="checkbox" id="libGroup" checked></label>
+      </div>
       <div class="panel">
         <div class="lib-bulk" id="libBulk" hidden>
           <label><input type="checkbox" class="lib-check" id="libAll"><span data-i18n="selectAll"></span></label>
@@ -770,6 +781,8 @@ const STR = {
     redoing: "Reading sentence {i} again…", redone: "Sentence {i} was read again and the full file was updated.",
     libraryHelp: "Every reading is saved here on the server, so it's still here after a refresh or a restart.",
     search: "Search the library", libEmpty: "Readings you make show up here.", noMatch: "Nothing matches “{q}”.",
+    allEngines: "All engines", allVoices: "All voices", groupSame: "Group the same text",
+    moreVersions: "{n} more versions", oneMoreVersion: "1 more version", hideVersions: "Hide versions", noFilterMatch: "No readings with this engine or voice.",
     "kind.dialogue": "Dialogue", "kind.chapter": "Chapter", deleteItemConfirm: "Delete this reading from the library?",
     deleteItem: "Delete from library", selectAll: "Select all", selectItem: "Select this reading",
     selectedCount: "{n} selected", deleteSelected: "Delete selected", deleteItemsConfirm: "Delete {n} readings from the library? This can't be undone.",
@@ -962,6 +975,8 @@ const STR = {
     redoing: "קורא מחדש את משפט {i}…", redone: "משפט {i} נקרא מחדש והקובץ המלא עודכן.",
     libraryHelp: "כל הקראה נשמרת כאן בשרת, ונשארת גם אחרי רענון הדף או הפעלה מחדש.",
     search: "חיפוש בספרייה", libEmpty: "ההקראות שתיצרו יופיעו כאן.", noMatch: "אין תוצאות עבור \"{q}\".",
+    allEngines: "כל המנועים", allVoices: "כל הקולות", groupSame: "קיבוץ טקסט זהה",
+    moreVersions: "עוד {n} גרסאות", oneMoreVersion: "עוד גרסה אחת", hideVersions: "הסתרת הגרסאות", noFilterMatch: "אין הקראות עם המנוע או הקול האלה.",
     "kind.dialogue": "דיאלוג", "kind.chapter": "פרק", deleteItemConfirm: "למחוק את ההקראה מהספרייה?",
     deleteItem: "מחיקה מהספרייה", selectAll: "בחירת הכול", selectItem: "בחירת ההקראה",
     selectedCount: "{n} נבחרו", deleteSelected: "מחיקת הנבחרים", deleteItemsConfirm: "למחוק {n} הקראות מהספרייה? אי אפשר לבטל את זה.",
@@ -2495,54 +2510,95 @@ async function refreshLibrary() {
   try { libraryItems = await (await api("/library")).json(); } catch { return; }
   renderHistory();
 }
+// Engine and voice filters list only what the library holds; "voice" ids are "engine/name".
+const libEngineOf = id => (id || "").split("/")[0];
+function renderLibFilters() {
+  const engineBox = $("libEngine"), voiceBox = $("libVoice");
+  const keepEngine = engineBox.value, keepVoice = voiceBox.value;
+  const engineIds = [...new Set(libraryItems.map(i => libEngineOf(i.voice)).filter(Boolean))];
+  const label = id => voices.find(v => v.engine === id)?.engine_label || id;
+  engineBox.innerHTML = `<option value="">${escapeHtml(t("allEngines"))}</option>` +
+    engineIds.map(id => `<option value="${escapeHtml(id)}">${escapeHtml(label(id))}</option>`).join("");
+  engineBox.value = engineIds.includes(keepEngine) ? keepEngine : "";
+  const voiceIds = [...new Set(libraryItems.map(i => i.voice).filter(id => id && (!engineBox.value || libEngineOf(id) === engineBox.value)))];
+  voiceBox.innerHTML = `<option value="">${escapeHtml(t("allVoices"))}</option>` +
+    voiceIds.map(id => `<option value="${escapeHtml(id)}">${escapeHtml(voiceText(id))}</option>`).join("");
+  voiceBox.value = voiceIds.includes(keepVoice) ? keepVoice : "";
+}
+// Readings of the same text (comparing voices, reading it again) show as one row, newest first,
+// with the others behind "N more versions"; ticking a closed group ticks all of its readings.
+const libOpenGroups = new Set();
+const libGroupKey = item => item.kind === "chapter" ? `id:${item.id}` : `text:${(item.text || "").trim()}`;
 function renderHistory() {
   const list = $("history"), q = $("libSearch").value.trim();
   $("libCount").textContent = libraryItems.length || "";
-  const items = q ? libraryItems.filter(i => `${i.title || ""} ${i.text || ""}`.includes(q)) : libraryItems;
+  renderLibFilters();
+  const engine = $("libEngine").value, voice = $("libVoice").value;
+  const items = libraryItems.filter(i => (!q || `${i.title || ""} ${i.text || ""}`.includes(q))
+    && (!engine || libEngineOf(i.voice) === engine) && (!voice || i.voice === voice));
   for (const id of [...libSelected]) if (!items.some(i => i.id === id)) libSelected.delete(id);
   renderLibBulk(items);
   if (!items.length) {
     list.innerHTML = `<li class="empty"></li>`;
-    list.firstChild.textContent = q ? t("noMatch", { q }) : t("libEmpty");
+    list.firstChild.textContent = q ? t("noMatch", { q }) : engine || voice ? t("noFilterMatch") : t("libEmpty");
     return;
   }
   list.innerHTML = "";
-  const dateFmt = new Intl.DateTimeFormat(lang === "he" ? "he-IL" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const groups = new Map();
   for (const item of items) {
-    const li = document.createElement("li");
-    li.className = "lib-row";
-    li.setAttribute("aria-current", item.id === current?.meta.id);
-    const kind = { dialogue: "kind.dialogue", chapter: "kind.chapter" }[item.kind];
-    li.innerHTML = `<input type="checkbox" class="lib-check"><button type="button" class="btn icon-btn play-sm"><svg><use href="#i-play"/></svg></button>
-      <div class="grow"><div class="snippet" dir="auto"></div>
-        <div class="sub">${kind ? `<span class="tag accent">${t(kind)}</span>` : ""}${escapeHtml(voiceText(item.voice))} · ${secs(item.audio_seconds || 0)} · ${t("sentenceCount", { n: item.sentences ?? 0 })} · ${item.created ? dateFmt.format(item.created * 1000) : ""}</div></div>
-      <a class="btn icon-btn actions-wide"><svg><use href="#i-download"/></svg></a>
-      <button type="button" class="btn icon-btn danger"><svg><use href="#i-trash"/></svg></button>`;
-    li.querySelector(".snippet").textContent = item.kind === "chapter" ? item.title : item.text;
-    const [play, del] = li.querySelectorAll("button"), check = li.querySelector(".lib-check");
-    check.checked = libSelected.has(item.id);
-    check.setAttribute("aria-label", t("selectItem"));
-    check.addEventListener("change", () => {
-      check.checked ? libSelected.add(item.id) : libSelected.delete(item.id);
-      renderLibBulk(items);
-    });
-    play.setAttribute("aria-label", t("play"));
-    play.addEventListener("click", () => openItem(item.id, { autoplay: true }).catch(e => setStatus(errorText(e), true)));
-    li.querySelector(".snippet").addEventListener("click", () => play.click());
-    li.querySelector(".snippet").style.cursor = "pointer";
-    const dl = li.querySelector("a");
-    dl.href = withKey(`/library/${item.id}/audio?format=${format()}`);
-    dl.setAttribute("aria-label", t("download"));
-    del.setAttribute("aria-label", t("deleteItem"));
-    del.addEventListener("click", async () => {
-      if (!confirm(t("deleteItemConfirm"))) return;
-      await api(`/library/${item.id}`, { method: "DELETE" });
-      libSelected.delete(item.id);
-      if (current?.meta.id === item.id) clearPlayer();
-      refreshLibrary();
-    });
-    list.append(li);
+    const key = $("libGroup").checked ? libGroupKey(item) : `id:${item.id}`;
+    groups.has(key) ? groups.get(key).push(item) : groups.set(key, [item]);
   }
+  for (const [key, group] of groups) {
+    const open = libOpenGroups.has(key);
+    list.append(libRow(group[0], items, { key, group, open }));
+    if (open) for (const item of group.slice(1)) list.append(libRow(item, items, { version: true }));
+  }
+}
+function libRow(item, items, { key = null, group = [item], open = false, version = false } = {}) {
+  const dateFmt = new Intl.DateTimeFormat(lang === "he" ? "he-IL" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const li = document.createElement("li");
+  li.className = "lib-row" + (version ? " lib-version" : "");
+  li.setAttribute("aria-current", item.id === current?.meta.id);
+  const kind = { dialogue: "kind.dialogue", chapter: "kind.chapter" }[item.kind];
+  li.innerHTML = `<input type="checkbox" class="lib-check"><button type="button" class="btn icon-btn play-sm"><svg><use href="#i-play"/></svg></button>
+    <div class="grow"><div class="snippet" dir="auto"></div>
+      <div class="sub">${kind ? `<span class="tag accent">${t(kind)}</span>` : ""}${escapeHtml(voiceText(item.voice))} · ${secs(item.audio_seconds || 0)} · ${t("sentenceCount", { n: item.sentences ?? 0 })} · ${item.created ? dateFmt.format(item.created * 1000) : ""}</div></div>
+    <a class="btn icon-btn actions-wide"><svg><use href="#i-download"/></svg></a>
+    <button type="button" class="btn icon-btn danger"><svg><use href="#i-trash"/></svg></button>`;
+  li.querySelector(".snippet").textContent = item.kind === "chapter" ? item.title : item.text;
+  if (group.length > 1) {
+    const more = document.createElement("button");
+    more.type = "button"; more.className = "lib-versions";
+    more.textContent = open ? t("hideVersions") : group.length === 2 ? t("oneMoreVersion") : t("moreVersions", { n: group.length - 1 });
+    more.setAttribute("aria-expanded", open);
+    more.addEventListener("click", () => { open ? libOpenGroups.delete(key) : libOpenGroups.add(key); renderHistory(); });
+    li.querySelector(".sub").append(" · ", more);
+  }
+  const [play] = li.querySelectorAll("button.play-sm"), del = li.querySelector("button.danger"), check = li.querySelector(".lib-check");
+  const ticks = open ? [item] : group;  // a closed group's box stands for all of its readings
+  check.checked = ticks.every(i => libSelected.has(i.id));
+  check.setAttribute("aria-label", t("selectItem"));
+  check.addEventListener("change", () => {
+    for (const i of ticks) check.checked ? libSelected.add(i.id) : libSelected.delete(i.id);
+    renderLibBulk(items);
+  });
+  play.setAttribute("aria-label", t("play"));
+  play.addEventListener("click", () => openItem(item.id, { autoplay: true }).catch(e => setStatus(errorText(e), true)));
+  li.querySelector(".snippet").addEventListener("click", () => play.click());
+  li.querySelector(".snippet").style.cursor = "pointer";
+  const dl = li.querySelector("a");
+  dl.href = withKey(`/library/${item.id}/audio?format=${format()}`);
+  dl.setAttribute("aria-label", t("download"));
+  del.setAttribute("aria-label", t("deleteItem"));
+  del.addEventListener("click", async () => {
+    if (!confirm(t("deleteItemConfirm"))) return;
+    await api(`/library/${item.id}`, { method: "DELETE" });
+    libSelected.delete(item.id);
+    if (current?.meta.id === item.id) clearPlayer();
+    refreshLibrary();
+  });
+  return li;
 }
 function clearPlayer() {
   audio.pause(); audio.removeAttribute("src");
@@ -2554,6 +2610,9 @@ function clearPlayer() {
   updateNow(); draw();
 }
 $("libSearch").addEventListener("input", renderHistory);
+$("libEngine").addEventListener("change", () => { $("libVoice").value = ""; renderHistory(); });
+$("libVoice").addEventListener("change", renderHistory);
+$("libGroup").addEventListener("change", () => { libOpenGroups.clear(); renderHistory(); });
 $("libAll").addEventListener("change", () => {
   const on = $("libAll").checked;  // ticking a row redraws this box
   document.querySelectorAll("#history .lib-check").forEach(c => { c.checked = on; c.dispatchEvent(new Event("change")); });
