@@ -5,8 +5,9 @@ Dialogue (opt-in):   lines like "נועה: שלום, מה שלומך?" are spoke
                      that speaker; lines without a speaker continue the previous one.
 """
 import re
+from difflib import SequenceMatcher
 
-PAUSE = re.compile(r"\[\s*(?:הפסקה|pause)\s*(\d+(?:\.\d+)?)?\s*\]", re.IGNORECASE)
+PAUSE =re.compile(r"\[\s*(?:הפסקה|pause)\s*(\d+(?:\.\d+)?)?\s*\]", re.IGNORECASE)
 SPEAKER_LINE = re.compile(r"^\s*([^:\n\[\]]{1,40}?)\s*:\s*(.+)$")
 MAX_PAUSE = 10.0
 # Added to the pause between sentences: after a new line (a heading, a list item, the next
@@ -14,6 +15,35 @@ MAX_PAUSE = 10.0
 LINE_PAUSE = 0.25
 PARAGRAPH_PAUSE = 0.5
 _LINE_BREAK = re.compile(r"[ \t\r]*\n(?:[ \t\r]*\n)*[ \t\r]*")
+
+
+def word_map(typed: str, spoken: list[str]) -> list[tuple[str, tuple[int, int] | None]]:
+    """The typed text in pieces (words and the spaces between them), each word with the range of
+    spoken words it became: "עולה 250 ₪" read as "עולה מאתיים וחמישים שקלים" gives עולה -> (0, 0),
+    and 250 and ₪ -> (1, 3) together, so the page can mark what you typed while it's heard.
+    Spaces, and words that weren't read (a [pause] marker), get None."""
+    pieces = [p for p in re.split(r"(\s+)", typed) if p]
+    words = [i for i, p in enumerate(pieces) if not p.isspace()]
+    ranges: dict[int, tuple[int, int]] = {}
+    lead = None  # spoken words before the first typed word that was read
+    matcher = SequenceMatcher(None, [pieces[i] for i in words], spoken, autojunk=False)
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal" or (op == "replace" and i2 - i1 == j2 - j1):
+            for k in range(i2 - i1):
+                ranges[words[i1 + k]] = (j1 + k, j1 + k)
+        elif op == "replace":  # "250 ₪" -> three words: the typed words share the spoken ones
+            for k in range(i1, i2):
+                ranges[words[k]] = (j1, j2 - 1)
+        elif op == "insert":  # spoken words with nothing typed for them join the word before
+            before = [w for w in words[:i1] if w in ranges]
+            if before:
+                ranges[before[-1]] = (ranges[before[-1]][0], j2 - 1)
+            else:
+                lead = j1
+    if ranges and lead is not None:  # the first word that was read takes them
+        first = min(ranges)
+        ranges[first] = (lead, ranges[first][1])
+    return [(p, ranges.get(i)) for i, p in enumerate(pieces)]
 
 
 def line_pieces(text: str) -> list[tuple[str, float]]:

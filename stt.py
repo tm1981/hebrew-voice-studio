@@ -115,6 +115,63 @@ class SpeechToText(OnDemand):
             self.last_used = time.monotonic()
         return " ".join(t for t in texts if t)
 
+    def word_times(self, audio: np.ndarray, sample_rate: int, text: str) -> list[list[float]] | None:
+        """When each word of `text` (split at spaces) is spoken in `audio`: [[start, end]] in
+        seconds, for marking words as a reading plays. The words are known, so nothing is
+        recognized: Whisper reads the text against the audio and its alignment heads (the
+        cross-attention heads that follow the audio, listed in the model's generation config)
+        give, through dynamic time warping, the frame where each token is heard. That's
+        OpenAI's word-timestamp method, with the text given instead of guessed. None if the
+        audio is too long for one window or the model has no alignment heads."""
+        import torch
+
+        words = text.split()
+        heads = getattr(self.model_generation_config(), "alignment_heads", None)
+        audio = resample_16k(audio, sample_rate)
+        if not words or not heads or len(audio) > CHUNK_SAMPLES - SAMPLE_RATE // 2:
+            return None
+        with self.lock:
+            self.ensure_loaded()
+            tok = self.processor.tokenizer
+            ids, owner = [], []
+            for i, word in enumerate(words):
+                pieces = tok.encode(" " + word, add_special_tokens=False)
+                ids += pieces
+                owner += [i] * len(pieces)
+            language = script_language(text)
+            prefix = tok.convert_tokens_to_ids(["<|startoftranscript|>", f"<|{language}|>", "<|transcribe|>", "<|notimestamps|>"])
+            sequence = torch.tensor([prefix + ids + [tok.convert_tokens_to_ids("<|endoftext|>")]], device=self.device)
+            features = self.processor(audio, sampling_rate=SAMPLE_RATE, return_tensors="pt").input_features
+            self.model.set_attn_implementation("eager")  # the fused kernels don't return attention weights
+            try:
+                with torch.inference_mode():
+                    out = self.model(input_features=features.to(self.device, self.dtype), decoder_input_ids=sequence,
+                                     output_attentions=True)
+            finally:
+                self.model.set_attn_implementation("sdpa")
+            frames = max(1, len(audio) // FRAME_SAMPLES)
+            weights = torch.stack([out.cross_attentions[layer][0, head] for layer, head in heads]).float()[:, :, :frames]
+            weights = (weights - weights.mean(-2, keepdim=True)) / (weights.std(-2, keepdim=True) + 1e-6)
+            # row k predicts token k+1: the rows from <|notimestamps|> on are the text tokens, then the end
+            matrix = weights.mean(0)[len(prefix) - 1 : -1].cpu().numpy()
+            self.last_used = time.monotonic()
+        token_start = token_starts(matrix) / (SAMPLE_RATE / FRAME_SAMPLES)
+        silences = silent_spans(audio)
+        times = []
+        for i in range(len(words)):
+            first, last = owner.index(i), len(owner) - owner[::-1].index(i)
+            start, end = float(token_start[first]), float(token_start[last])
+            for s, e in silences:  # a pause in the first half of a word's span comes before the word
+                if s < (start + end) / 2 and start < e < end:
+                    start = e
+            times.append([round(start, 2), round(max(end, start + 0.05), 2)])
+        return times
+
+    def model_generation_config(self):
+        with self.lock:
+            self.ensure_loaded()
+            return self.model.generation_config
+
     def _speech_seconds(self, chunk: np.ndarray) -> float:
         import torch
         from silero_vad import get_speech_timestamps
@@ -139,6 +196,70 @@ class SpeechToText(OnDemand):
         with torch.inference_mode():
             ids = self.model.generate(features.to(self.device, self.dtype), language=language, task="transcribe", **extra)
         return BIDI_MARKS.sub("", self.processor.batch_decode(ids, skip_special_tokens=True)[0]).strip()
+
+
+FRAME_SAMPLES = 320  # Whisper's encoder: one frame per 20 ms
+_SCRIPT_HEBREW, _SCRIPT_ARABIC, _SCRIPT_LATIN = re.compile("[א-ת]"), re.compile("[ء-ي]"), re.compile("[A-Za-z]")
+
+
+def script_language(text: str) -> str:
+    """The language token for a sentence, by its letters: Hebrew unless it has none."""
+    if _SCRIPT_HEBREW.search(text):
+        return "he"
+    if _SCRIPT_ARABIC.search(text):
+        return "ar"
+    return "en" if _SCRIPT_LATIN.search(text) else "he"
+
+
+def resample_16k(audio: np.ndarray, sample_rate: int) -> np.ndarray:
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    if sample_rate == SAMPLE_RATE:
+        return audio
+    import librosa
+
+    return librosa.resample(audio, orig_sr=sample_rate, target_sr=SAMPLE_RATE).astype(np.float32)
+
+
+def token_starts(matrix: np.ndarray) -> np.ndarray:
+    """Dynamic time warping through [tokens + end, frames] attention (high = heard there): the
+    first frame of each row on the best monotonic path."""
+    cost = -matrix
+    rows, cols = cost.shape
+    total = np.full((rows + 1, cols + 1), np.inf)
+    total[0, 0] = 0
+    step = np.zeros((rows + 1, cols + 1), dtype=np.int8)  # 0 diagonal, 1 from the row above, 2 from the left
+    for i in range(1, rows + 1):
+        for j in range(1, cols + 1):
+            options = (total[i - 1, j - 1], total[i - 1, j], total[i, j - 1])
+            k = int(np.argmin(options))
+            total[i, j], step[i, j] = cost[i - 1, j - 1] + options[k], k
+    starts = np.zeros(rows)
+    i, j = rows, cols
+    while i > 0 and j > 0:
+        starts[i - 1] = j - 1  # walking back, so the last write per row is its first frame
+        k = step[i, j]
+        i, j = (i - 1, j - 1) if k == 0 else (i - 1, j) if k == 1 else (i, j - 1)
+    return starts
+
+
+def silent_spans(audio: np.ndarray, min_seconds: float = 0.12) -> list[tuple[float, float]]:
+    """Stretches quieter than 2% of the loudest 20 ms frame, in seconds."""
+    frames = len(audio) // FRAME_SAMPLES
+    if frames == 0:
+        return []
+    rms = np.sqrt(np.mean(audio[: frames * FRAME_SAMPLES].reshape(frames, FRAME_SAMPLES) ** 2, axis=1))
+    quiet = rms < rms.max() * 0.02
+    spans, start = [], None
+    for i, q in enumerate(np.append(quiet, False)):
+        if q and start is None:
+            start = i
+        elif not q and start is not None:
+            if (i - start) * FRAME_SAMPLES / SAMPLE_RATE >= min_seconds:
+                spans.append((start * FRAME_SAMPLES / SAMPLE_RATE, i * FRAME_SAMPLES / SAMPLE_RATE))
+            start = None
+    return spans
 
 
 def decode_audio(data: bytes) -> np.ndarray:

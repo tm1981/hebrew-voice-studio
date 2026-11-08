@@ -127,7 +127,7 @@ from engines import (
 from documents import MAX_DOCUMENT_CHARS, Jobs, extract_text, split_chapters, zip_chapters
 from engines import check_recording
 from library import SENTENCE_GAP, Library, MemoryCache, cache_key, to_rate
-from script import LINE_PAUSE, detect_speakers, line_pieces, parse
+from script import LINE_PAUSE, detect_speakers, line_pieces, parse, word_map
 from stt import BUILTIN_MODELS, DEFAULT_MODEL as DEFAULT_STT_MODEL, SpeechToText, decode_audio
 from text_prep import Dictionary, prepare
 
@@ -339,6 +339,9 @@ class TTSRequest(BaseModel):
     speakers: dict[str, str] = {}
     # Reuse an identical earlier reading (library or memory cache) instead of generating.
     use_cache: bool = True
+    # Time every word with Whisper after its sentence is read (about 0.1 s each, and the speech-
+    # to-text model in memory), so the page marks the word being heard. Off: it estimates.
+    word_timing: bool = False
 
     def settings(self) -> dict:
         """What's saved with a library item and reused when a sentence is regenerated. Settings
@@ -349,6 +352,8 @@ class TTSRequest(BaseModel):
             out.pop("options")
         if self.sentence_pause == SENTENCE_GAP:
             out.pop("sentence_pause")
+        if not self.word_timing:
+            out.pop("word_timing")
         return out
 
     def engine_options(self, engine) -> dict:
@@ -476,7 +481,43 @@ def pause_frame(seconds: float) -> bytes:
 
 
 def item_summary(meta: dict) -> list[dict]:
-    return [{k: i.get(k) for k in ("kind", "text", "voice", "seconds")} for i in meta["items"]]
+    return [{k: i.get(k) for k in ("kind", "text", "voice", "seconds", "start", "words")} for i in meta["items"]]
+
+
+def readalong(req: TTSRequest, items: list[tuple]) -> list[list]:
+    """The typed text as the page shows it while the reading plays: [[piece, first, last]] where
+    first and last are the [item index, word index] the piece was read as (None for spaces and
+    anything not read). Pause markers and speaker names are left out; a part whose sentences
+    don't add up to its words (a word cut at max_chars) is shown without marking."""
+    out, speech = [], [k for k, item in enumerate(items) if item[0] == "speech"]
+    taken = 0
+    for seg in parse(req.text, req.voice, req.dialogue, req.speakers):
+        if seg[0] == "pause":
+            continue
+        spoken = prepare(seg[2], dictionary, req.normalize).split()
+        owners = []  # spoken word n -> (item index, word index in that sentence)
+        while len(owners) < len(spoken) and taken < len(speech):
+            k = speech[taken]
+            taken += 1
+            owners += [[k, w] for w in range(len(items[k][2].split()))]
+        if out:
+            out.append(["\n", None, None])
+        if len(owners) != len(spoken):
+            out.append([seg[2], None, None])
+            continue
+        out += [[piece, owners[r[0]], owners[r[1]]] if r else [piece, None, None] for piece, r in word_map(seg[2], spoken)]
+    return out
+
+
+def time_words(req: TTSRequest, audio: np.ndarray, rate: int, text: str) -> list | None:
+    """Word times for one sentence when the request asks for them and speech-to-text is on."""
+    if not (req.word_timing and stt):
+        return None
+    try:
+        return stt.word_times(audio, rate, text)
+    except Exception as e:  # marking words is a nicety; the reading must not fail over it
+        print(f"[words] timing failed: {e}", flush=True)
+        return None
 
 
 @app.get("/", include_in_schema=False)
@@ -787,15 +828,16 @@ def tts_stream(req: TTSRequest):
                     yield pause_frame(item[1])
                     continue
                 audio, rate = speak_item(item, req)
-                results.append({"kind": "speech", "voice": item[1], "text": item[2], "audio": audio, "sample_rate": rate})
-                yield frame(b"a", encode(audio, rate, "wav"))
+                yield frame(b"a", encode(audio, rate, "wav"))  # heard first; the words are timed while it plays
+                results.append({"kind": "speech", "voice": item[1], "text": item[2], "audio": audio, "sample_rate": rate,
+                                "words": time_words(req, audio, rate, item[2])})
         except HTTPException as e:
             yield frame(b"e", json.dumps({"detail": e.detail}).encode())
             return
         meta = library.save(
             title=req.text.strip().split("\n")[0][:60], kind="dialogue" if req.dialogue else "reading",
             text=req.text, voice=req.voice, settings=req.settings(), items=results,
-            generation_seconds=time.perf_counter() - t0, key=key,
+            generation_seconds=time.perf_counter() - t0, key=key, readalong=readalong(req, items),
         )
         yield from finish(meta, cached=False)
 
@@ -1179,16 +1221,17 @@ def documents_start(file: UploadFile = File(...), settings: str = Form("{}")):
     def read_chapter(chapter_title: str, chapter_text: str, group: str) -> dict:
         req = base.model_copy(update={"text": chapter_text})
         t0 = time.perf_counter()
-        results = []
-        for item in plan(req):
+        results, items = [], plan(req)
+        for item in items:
             if item[0] == "pause":
                 results.append({"kind": "pause", "seconds": item[1]})
             else:
                 audio, rate = speak_item(item, req)
-                results.append({"kind": "speech", "voice": item[1], "text": item[2], "audio": audio, "sample_rate": rate})
+                results.append({"kind": "speech", "voice": item[1], "text": item[2], "audio": audio, "sample_rate": rate,
+                                "words": time_words(req, audio, rate, item[2])})
         return library.save(title=f"{title}: {chapter_title}", kind="chapter", text=chapter_text, voice=req.voice,
                             settings=req.settings(), items=results, generation_seconds=time.perf_counter() - t0,
-                            group=group)
+                            group=group, readalong=readalong(req, items))
 
     return jobs.start(title, split_chapters(text), read_chapter)
 

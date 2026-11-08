@@ -161,6 +161,9 @@
   textarea.box:focus { border-color: var(--accent); }
   .niqqud { white-space: pre-wrap; overflow: auto; font-size: calc(25px * var(--read-scale)); line-height: 1.95; }
   .niqqud .note { display: block; font: 400 13px/1.5 var(--ui); color: var(--muted); margin-bottom: 14px; }
+  .readalong { cursor: text; unicode-bidi: plaintext; }  /* each line takes the direction of its own text */
+  .readalong .in-sentence { background: var(--accent-soft); }
+  .readalong .now { background: var(--accent); color: var(--accent-ink); border-radius: 4px; box-shadow: 0 0 0 2px var(--accent); }
   .editor-foot { display: flex; justify-content: space-between; gap: 16px; color: var(--faint); font-size: 12px; }
   .editor-foot span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .settings { padding: 18px; display: flex; flex-direction: column; gap: 16px; align-self: start; position: sticky; top: 0; }
@@ -397,6 +400,7 @@
           <div class="seg" role="group">
             <button type="button" id="viewText" aria-pressed="true" data-i18n="tab.text"></button>
             <button type="button" id="viewNiqqud" aria-pressed="false" data-i18n="tab.niqqud"></button>
+            <button type="button" id="viewRead" aria-pressed="false" data-i18n="tab.read" hidden></button>
           </div>
           <span class="spacer"></span>
           <button type="button" class="btn ghost" id="compare"><svg><use href="#i-compare"/></svg><span data-i18n="compare"></span></button>
@@ -404,6 +408,7 @@
         <div class="editor">
           <textarea id="text" maxlength="5000" dir="auto" data-i18n-placeholder="placeholder"></textarea>
           <div class="niqqud" id="niqqud" dir="rtl" hidden aria-live="polite"></div>
+          <div class="niqqud readalong" id="readalong" dir="auto" hidden></div>
         </div>
         <div class="editor-foot"><span data-i18n="hint"></span><span id="count"></span></div>
         <button type="button" class="btn primary speak" id="speak"><span data-i18n="speak"></span><kbd>Ctrl+Enter</kbd></button>
@@ -447,6 +452,7 @@
         <div class="divider"></div>
         <label class="switch"><span data-i18n="normalize"></span><input type="checkbox" id="normalize" checked></label>
         <label class="switch"><span data-i18n="useCache"></span><input type="checkbox" id="useCache" checked></label>
+        <label class="switch" data-i18n-title="markWordsHint"><span data-i18n="markWords"></span><input type="checkbox" id="markWords"></label>
         <label class="switch"><span data-i18n="dialogue"></span><input type="checkbox" id="dialogue"></label>
         <div class="speakers" id="speakers" hidden></div>
         <details class="advanced" id="advanced">
@@ -714,7 +720,9 @@ const STR = {
     connecting: "Connecting…", ready: "Ready · {gpu}", serverDown: "Server unavailable",
     "nav.read": "Read", "nav.library": "Library", "nav.documents": "Long documents", "nav.voices": "Voices",
     "nav.words": "Pronunciation", "nav.transcribe": "Transcribe", "nav.status": "Settings",
-    "tab.text": "Text", "tab.niqqud": "With niqqud", compare: "Compare all engines",
+    "tab.text": "Text", "tab.niqqud": "With niqqud", "tab.read": "Follow along", compare: "Compare all engines",
+    markWords: "Mark each word exactly (Whisper)",
+    markWordsHint: "Times every word with Whisper after its sentence is read, about 0.1 s a sentence, with the speech-to-text model in memory. Off: the sentence is marked exactly and the word is estimated.",
     placeholder: "Type or paste Hebrew text here",
     hint: "[pause 2] adds a 2-second pause. Turn on Dialogue for lines like “Noa: hello”.",
     preset: "Preset", presetNone: "No preset", savePreset: "Save current settings as a preset", deletePreset: "Delete this preset",
@@ -909,7 +917,9 @@ const STR = {
     connecting: "מתחבר לשרת…", ready: "מוכן · {gpu}", serverDown: "השרת לא זמין",
     "nav.read": "הקראה", "nav.library": "ספרייה", "nav.documents": "מסמכים ארוכים", "nav.voices": "קולות",
     "nav.words": "מילון הגייה", "nav.transcribe": "תמלול", "nav.status": "הגדרות",
-    "tab.text": "טקסט", "tab.niqqud": "עם ניקוד", compare: "השוואה בין כל המנועים",
+    "tab.text": "טקסט", "tab.niqqud": "עם ניקוד", "tab.read": "מעקב קריאה", compare: "השוואה בין כל המנועים",
+    markWords: "סימון מדויק של כל מילה (Whisper)",
+    markWordsHint: "מתזמן כל מילה עם Whisper אחרי שהמשפט שלה מוקרא, כ-0.1 שנייה למשפט, ומודל התמלול נשאר בזיכרון. כבוי: המשפט מסומן בדיוק והמילה בהערכה.",
     placeholder: "כתבו או הדביקו כאן טקסט בעברית",
     hint: "[הפסקה 2] מוסיף הפסקה של שתי שניות. הפעילו דיאלוג לשורות כמו \"נועה: שלום\".",
     preset: "הגדרות שמורות", presetNone: "ללא", savePreset: "שמירת ההגדרות הנוכחיות", deletePreset: "מחיקת ההגדרות השמורות",
@@ -2088,6 +2098,8 @@ textEl.addEventListener("input", () => {
 async function showNiqqud(on) {
   $("viewText").setAttribute("aria-pressed", !on);
   $("viewNiqqud").setAttribute("aria-pressed", on);
+  $("viewRead").setAttribute("aria-pressed", false);
+  $("readalong").hidden = true;
   textEl.hidden = on;
   niqqudEl.hidden = !on;
   if (!on) { textEl.focus(); return; }
@@ -2115,6 +2127,76 @@ async function showNiqqud(on) {
 $("normalize").addEventListener("change", () => { if (!niqqudEl.hidden) showNiqqud(true); });
 $("viewText").addEventListener("click", () => showNiqqud(false));
 $("viewNiqqud").addEventListener("click", () => showNiqqud(true));
+
+// ---------- Follow along: the reading's text with the sentence and word being heard marked ----------
+// The server saves the typed text in pieces, each with the [sentence, word] it was read as
+// (meta.readalong), every item's start in the file, and, with "Mark each word exactly", when
+// each word starts (item.words, from Whisper). Without word times the word is estimated from
+// how far into the sentence the audio is, by word length.
+let readPieces = [], readMarked = "";
+function renderReadalong(meta) {
+  const box = $("readalong");
+  box.innerHTML = "";
+  readPieces = [];
+  readMarked = "";
+  $("viewRead").hidden = !meta?.readalong;
+  if (!meta?.readalong) { if (!box.hidden) showNiqqud(false); return; }
+  for (const [piece, a, b] of meta.readalong) {
+    if (!a) { box.append(piece); continue; }
+    const span = document.createElement("span");
+    span.textContent = piece;
+    box.append(span);
+    readPieces.push({ el: span, a, b });
+  }
+}
+function showRead() {
+  $("viewText").setAttribute("aria-pressed", false);
+  $("viewNiqqud").setAttribute("aria-pressed", false);
+  $("viewRead").setAttribute("aria-pressed", true);
+  textEl.hidden = true;
+  niqqudEl.hidden = true;
+  $("readalong").hidden = false;
+  readMarked = "";
+  markReading();
+}
+$("viewRead").addEventListener("click", showRead);
+$("markWords").checked = storage.get("kol-mark-words") === "1";
+$("markWords").addEventListener("change", () => storage.set("kol-mark-words", $("markWords").checked ? "1" : "0"));
+$("readalong").addEventListener("click", () => showNiqqud(false));  // clicking the text goes back to editing
+const wordBefore = (x, y) => x[0] < y[0] || (x[0] === y[0] && x[1] <= y[1]);  // [item, word] order
+function wordAt(item, into) {
+  if (item.words?.length) {
+    let w = 0;
+    while (w + 1 < item.words.length && item.words[w + 1][0] <= into) w++;
+    return w;
+  }
+  const lengths = item.text.split(/\s+/).filter(Boolean).map(w => w.length + 1);
+  const total = lengths.reduce((a, b) => a + b, 0), spoken = (item.seconds || 1) * 0.92;  // the end is mostly silence
+  let at = 0, w = 0;
+  const target = Math.min(into / spoken, 1) * total;
+  while (w + 1 < lengths.length && at + lengths[w] <= target) at += lengths[w++];
+  return w;
+}
+function markReading() {
+  if (!current || $("readalong").hidden || !readPieces.length) return;
+  const items = current.meta.items, now = audio.currentTime;
+  let k = -1;
+  if (items.some(i => i.start != null)) items.forEach((it, i) => { if (it.start != null && it.start <= now + 0.02) k = i; });
+  else k = currentIndex();
+  const item = items[k];
+  const at = item && item.kind === "speech" && now > 0 ? [k, wordAt(item, now - (item.start ?? itemBounds()[k]?.[0] ?? 0))] : null;
+  const key = at ? at.join(":") : "";
+  if (key === readMarked) return;
+  readMarked = key;
+  let first = null;
+  for (const p of readPieces) {
+    const now = at && wordBefore(p.a, at) && wordBefore(at, p.b);
+    p.el.classList.toggle("now", !!now);
+    p.el.classList.toggle("in-sentence", !!at && p.a[0] <= at[0] && at[0] <= p.b[0]);
+    if (now && !first) first = p.el;
+  }
+  first?.scrollIntoView({ block: "nearest" });
+}
 
 // ---------- Pronunciation dictionary ----------
 let dictionaryVersion = 0, lexicon = {};  // version bumps on change so the niqqud preview refreshes
@@ -2190,7 +2272,7 @@ async function generate(text, voice, { live, onProgress, dialogue = false }) {
   const r = await postJSON("/tts/stream", {
     text, format: fmtNow, voice: voice.id, speed: +$("speed").value, normalize: $("normalize").checked,
     options: engineOpts, sentence_pause: +$("sentencePause").value, use_cache: $("useCache").checked,
-    dialogue, speakers: dialogue ? { ...speakerVoices } : {},
+    dialogue, speakers: dialogue ? { ...speakerVoices } : {}, word_timing: $("markWords").checked,
   });
   if (!r.ok) {
     const detail = await r.json().catch(() => ({}));
@@ -2305,6 +2387,7 @@ async function openItem(id, { blob = null, autoplay = false } = {}) {
   $("download").href = withKey(`/library/${id}/audio?format=${format()}`);
   $("download").removeAttribute("aria-disabled");
   renderSentences(meta);
+  renderReadalong(meta);
   renderHistory();
   updateNow();
   draw();
@@ -2351,10 +2434,15 @@ function updateNow() {
     lastIndex = idx;
     document.querySelectorAll("#sentences li").forEach((li, i) => li.classList.toggle("current", i === idx && audio.currentTime > 0));
   }
+  markReading();
 }
 
 $("play").addEventListener("click", () => audio.paused ? audio.play() : audio.pause());
-audio.addEventListener("play", () => { stopLive(); setPlayIcon(true); loop(); });
+audio.addEventListener("play", () => {
+  stopLive(); setPlayIcon(true);
+  if (current?.meta.readalong && document.activeElement !== textEl) showRead();  // follow along while it plays
+  loop();
+});
 audio.addEventListener("pause", () => setPlayIcon(false));
 audio.addEventListener("ended", () => { draw(); updateNow(); });
 audio.addEventListener("loadedmetadata", () => { updateNow(); draw(); });
@@ -2618,6 +2706,7 @@ function clearPlayer() {
   $("download").setAttribute("aria-disabled", "true"); $("download").removeAttribute("href");
   $("drawer").hidden = true; $("sentencesBtn").setAttribute("aria-expanded", false);
   $("sentences").innerHTML = "";
+  renderReadalong(null);
   updateNow(); draw();
 }
 $("libSearch").addEventListener("input", renderHistory);

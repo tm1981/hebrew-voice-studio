@@ -98,8 +98,11 @@ class Library:
     def full_path(self, item_id: str) -> Path:
         return self._dir(item_id) / "full.wav"
 
-    def save(self, *, title, kind, text, voice, settings, items, generation_seconds, key=None, group=None) -> dict:
-        """items: [{"kind": "speech", "text", "voice", "audio", "sample_rate"} | {"kind": "pause", "seconds"}]"""
+    def save(self, *, title, kind, text, voice, settings, items, generation_seconds, key=None, group=None,
+             readalong=None) -> dict:
+        """items: [{"kind": "speech", "text", "voice", "audio", "sample_rate", "words"?} | {"kind": "pause", "seconds"}]
+        ("words": when each word starts and ends, from the "mark words" option). readalong: the
+        typed text in pieces, each with the sentence and words it became (server.readalong)."""
         item_id = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
         folder = self._dir(item_id)
         folder.mkdir(parents=True)
@@ -114,11 +117,15 @@ class Library:
             sf.write(folder / file, audio, rate, subtype="PCM_16")
             stored.append({"kind": "speech", "text": item["text"], "voice": item["voice"], "file": file,
                            "seconds": round(len(audio) / rate, 2)})
+            if item.get("words"):
+                stored[-1]["words"] = item["words"]
         meta = {
             "id": item_id, "created": time.time(), "title": title, "kind": kind, "text": text, "voice": voice,
             "settings": settings, "cache_key": key, "group": group, "sample_rate": rate, "items": stored,
             "generation_seconds": round(generation_seconds, 2),
         }
+        if readalong:
+            meta["readalong"] = readalong
         self._write(meta)
         if key:
             self.by_key[key] = item_id
@@ -135,6 +142,7 @@ class Library:
             sf.write(self._dir(item_id) / item["file"], audio, meta["sample_rate"], subtype="PCM_16")
             item["text"] = text
             item["seconds"] = round(len(audio) / meta["sample_rate"], 2)
+            item.pop("words", None)  # the old take's word times; the page estimates until there are new ones
             self._write(meta)
             return meta
 
@@ -150,15 +158,20 @@ class Library:
         folder = self._dir(meta["id"])
         rate = meta["sample_rate"]
         gap = np.zeros(int(rate * meta.get("settings", {}).get("sentence_pause", SENTENCE_GAP)), dtype=np.float32)
-        parts, previous_speech = [], False
+        parts, previous_speech, at = [], False, 0
         for item in meta["items"]:
             if item["kind"] == "pause":
+                item["start"] = round(at / rate, 3)
                 parts.append(np.zeros(int(rate * item["seconds"]), dtype=np.float32))
+                at += len(parts[-1])
                 previous_speech = False
                 continue
             if previous_speech:
                 parts.append(gap)
+                at += len(gap)
+            item["start"] = round(at / rate, 3)  # where it starts in full.wav, for marking it as it plays
             parts.append(sf.read(folder / item["file"], dtype="float32")[0])
+            at += len(parts[-1])
             previous_speech = True
         full = np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
         sf.write(folder / "full.wav", full, rate, subtype="PCM_16")
