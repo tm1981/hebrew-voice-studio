@@ -45,6 +45,7 @@
     "english": {"en": "Reads it", "he": "קורא"},
     "clone": {"en": "Good", "he": "טוב"},
     "speed": {"en": "About 2.5× real time", "he": "בערך פי 2.5 מזמן אמת"},
+    "memory": {"en": "About 10.4 GB", "he": "בערך 10.4 GB"},
     "tested": {"en": "A misheard word in 4 of 40 sentences at the current setting.", "he": "מילה שנשמעה לא נכון ב־4 מתוך 40 משפטים בהגדרה הנוכחית."},
     "yours": {"en": "Sounds good.", "he": "נשמע טוב."}
   },
