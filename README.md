@@ -278,7 +278,8 @@ To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder
 - Map `/app/models` to a host folder to
   keep downloads across rebuilds, or to reuse a models folder you already have.
 - `/data` holds your data: recorded voices, the library, presets, settings, pronunciations and
-  `api_key.txt`.
+  `api_key.txt`. It also keeps `cache/`, compiled GPU code (up to about 1 GB) that makes the
+  first reading after an update faster; it's safe to delete and isn't in backups.
 - `VOICE_ENGINES=lightblue,kokoro,qwen,magpie` starts only those engines (and downloads only
   their models; [all the names](#choosing-which-engines-start)). GPU engines start unloaded and load when you choose one of their voices, so
   only what you use takes GPU memory; unused ones unload by themselves after 30 minutes.

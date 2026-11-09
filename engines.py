@@ -257,12 +257,35 @@ class OnDemand:
     gpu = True
     loaded = False
     last_used = 0.0
+    loading_since = None  # time.monotonic() while _load() runs, for the page and the log
+    load_error = None     # why the last load failed, until one succeeds
+    load_waiting = None   # time.monotonic() while a load waits for the engine to finish other work
+    LOG_EVERY = 30        # seconds between "still loading" lines in the log
 
     def ensure_loaded(self) -> None:
         """Call with self.lock held."""
         if not self.loaded:
-            self._load()
-            self.loaded = True
+            self.loading_since = time.monotonic()
+            done = threading.Event()
+
+            def still_loading():
+                while not done.wait(self.LOG_EVERY):
+                    print(f"[load] {self.label}: still loading, {time.monotonic() - self.loading_since:.0f}s", flush=True)
+
+            print(f"[load] {self.label}: loading", flush=True)
+            threading.Thread(target=still_loading, daemon=True).start()
+            try:
+                self._load()
+                self.loaded = True
+                self.load_error = None
+                print(f"[load] {self.label}: loaded in {time.monotonic() - self.loading_since:.0f}s", flush=True)
+            except BaseException as e:
+                self.load_error = str(e) or type(e).__name__
+                print(f"[load] {self.label}: failed after {time.monotonic() - self.loading_since:.0f}s: {self.load_error}", flush=True)
+                raise
+            finally:
+                done.set()
+                self.loading_since = None
         self.last_used = time.monotonic()
 
     def unload(self, wait: bool = True) -> bool:
@@ -271,7 +294,7 @@ class OnDemand:
             return False
         try:
             if self.loaded:
-                print(f"Unloading {self.label} to free GPU memory")
+                print(f"[load] {self.label}: unloading to free GPU memory", flush=True)
                 self._unload()
                 self.loaded = False
         finally:

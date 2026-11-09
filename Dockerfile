@@ -63,6 +63,11 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/*
 
+# Chatterbox's Chinese word splitter downloads its 34 MB model from GitHub the first time it loads,
+# which was slow enough (minutes) to look like Chatterbox hanging on every new container.
+# (The zip stays: it's what the splitter checks for before downloading again.)
+RUN /opt/envs/voice/bin/python -c "from spacy_pkuseg import pkuseg; pkuseg()"
+
 WORKDIR /app
 COPY . /app
 
@@ -76,6 +81,16 @@ ENV VOICE_ENVS=/opt/envs \
     PYTHONUTF8=1 \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+# Compiled-kernel caches go to the data volume so they survive image updates. Without this, the
+# first reading after every update compiles everything again: torch.compile (Higgs, Breeze Fast)
+# through Inductor and Triton, and the NVIDIA driver's kernel cache (about 1 GB once all engines
+# have run). Entries made by other library or driver versions are just ignored, not misused.
+# The backup zip only takes voices and readings, so these never end up in it.
+ENV CUDA_CACHE_PATH=/data/cache/nv \
+    TORCHINDUCTOR_CACHE_DIR=/data/cache/inductor \
+    TRITON_CACHE_DIR=/data/cache/triton \
+    PYTORCH_KERNEL_CACHE_PATH=/data/cache/torch-kernels
 
 VOLUME ["/app/models", "/data"]
 EXPOSE 8010 10200

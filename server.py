@@ -1013,12 +1013,8 @@ def engine_unload(name: str):
 
 @app.post("/engines/{name}/load")
 def engine_load(name: str):
-    engine = gpu_engine(name)
-    try:
-        with engine.lock:
-            engine.ensure_loaded()
-    except RuntimeError as e:
-        raise HTTPException(502, str(e))
+    """Starts loading and returns at once; /status shows it loading (and why, if it failed)."""
+    load_in_background(gpu_engine(name))
     return status()
 
 
@@ -1062,12 +1058,25 @@ keep_loaded = set(load_settings().get("keep_loaded", []))
 
 
 def load_in_background(engine) -> None:
+    """Loads a GPU engine in its own thread, unless it's loaded or a load is already on its way."""
+    if engine.loaded or engine.loading_since or engine.load_waiting:
+        return
+    engine.load_waiting = time.monotonic()
+
     def run():
         try:
-            with engine.lock:
+            if not engine.lock.acquire(blocking=False):  # reading or unloading right now
+                print(f"[load] {engine.label}: waiting for its current work to finish", flush=True)
+                engine.lock.acquire()
+            try:
+                engine.load_waiting = None
                 engine.ensure_loaded()
-        except Exception as e:
-            print(f"[WARN] couldn't load {engine.label}: {e}")
+            finally:
+                engine.lock.release()
+        except Exception:
+            pass  # ensure_loaded logged it, and /status shows load_error
+        finally:
+            engine.load_waiting = None
 
     threading.Thread(target=run, daemon=True, name=f"load-{engine.name}").start()
 
@@ -1357,8 +1366,12 @@ def status():
         loaded = e.loaded if gpu else True
         alive = e._info() is not None if isinstance(e, RemoteEngine) and loaded else loaded
         idle = round((time.monotonic() - e.last_used) / 60, 1) if gpu and loaded else None
+        since = lambda t: round(time.monotonic() - t, 1) if t else None  # noqa: E731
         rows.append({"name": e.name, "label": e.label, "kind": kind, "voices": len(e.voices), "alive": alive,
-                     "gpu": gpu, "loaded": loaded, "idle_minutes": idle, "keep_loaded": e.name in keep_loaded})
+                     "gpu": gpu, "loaded": loaded, "idle_minutes": idle, "keep_loaded": e.name in keep_loaded,
+                     "loading_seconds": since(getattr(e, "loading_since", None)) if gpu else None,
+                     "waiting_seconds": since(getattr(e, "load_waiting", None)) if gpu else None,
+                     "load_error": getattr(e, "load_error", None) if gpu and not loaded else None})
     return {
         "engines": rows, "gpu": gpu_summary(), "library_items": len(library.list()), "memory_cache": len(api_cache.items),
         "jobs_running": sum(1 for j in jobs.jobs.values() if j["status"] == "running"),
@@ -1701,4 +1714,12 @@ if __name__ == "__main__":
         wyoming_service.start(args.host, args.wyoming_port, list_voices, wyoming_speak, default_voice, allowed,
                               transcribe=stt_transcribe if stt else None,
                               stt_model=lambda: (stt.model_id, stt.languages))
+    import logging
+
+    class QuietPolling(logging.Filter):
+        """Leaves the page's every-few-seconds requests out of the log, so loading and errors stand out."""
+        def filter(self, record):
+            return not any(f'"GET {path} ' in record.getMessage() for path in ("/gpu/memory", "/status", "/health"))
+
+    logging.getLogger("uvicorn.access").addFilter(QuietPolling())
     uvicorn.run(app, host=args.host, port=args.port)

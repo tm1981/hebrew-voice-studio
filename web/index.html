@@ -57,6 +57,9 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
   .dot.ok { background: var(--ok); }
   .dot.down { background: var(--error); }
+  .dot.busy { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { .dot.busy { animation: none; } }
   .spacer { flex: 1; }
   .fonts-menu { position: relative; }
   .fonts-menu > button { width: 34px; height: 30px; font: 500 14px var(--read); }
@@ -300,6 +303,7 @@
     box-shadow: 0 10px 30px rgba(0,0,0,.4); display: flex; gap: 12px; align-items: center; font-size: 13.5px;
   }
   .toast.error { border-color: var(--error); color: var(--error); }
+  #toastText { white-space: pre-line; }
   .toast button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0; font-size: 16px; line-height: 1; }
 
   @media (max-width: 1000px) {
@@ -910,6 +914,9 @@ const STR = {
     engineBusy: "This engine is reading right now. Try again when it's done.",
     loadingEngine: "Loading {name}, this can take a few minutes… {s}s",
     engineLoaded: "{name} is loaded.",
+    waitingEngine: "{name} will load when its current work is done…",
+    engineLoadFailed: "{name} didn't load: {error}",
+    loadingState: "Loading… {s}s", waitingState: "Waiting to load…", loadFailedState: "Didn't load: {error}",
     zonosFailed: "Couldn't connect: {err}", fonts: "Fonts", readFont: "Font for the text", readSize: "Text size", uiFont: "Font for menus and buttons",
   },
   he: {
@@ -1107,6 +1114,9 @@ const STR = {
     engineBusy: "המנוע מקריא כרגע. נסו שוב כשיסיים.",
     loadingEngine: "טוען את {name}, זה יכול לקחת כמה דקות… {s} שניות",
     engineLoaded: "{name} נטען.",
+    waitingEngine: "{name} ייטען כשהעבודה הנוכחית שלו תסתיים…",
+    engineLoadFailed: "{name} לא נטען: {error}",
+    loadingState: "טוען… {s} שניות", waitingState: "ממתין לטעינה…", loadFailedState: "לא נטען: {error}",
     zonosFailed: "לא ניתן להתחבר: {err}", fonts: "גופנים", readFont: "גופן הטקסט", readSize: "גודל הטקסט", uiFont: "גופן התפריטים והכפתורים",
   },
 };
@@ -1189,6 +1199,7 @@ function go(view) {
   document.querySelectorAll("[data-view]").forEach(s => s.hidden = s.dataset.view !== view);
   document.querySelectorAll(".rail [data-go]").forEach(b => b.dataset.go === view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   storage.set("kol-view", view);
+  watchLoading();
   if (view === "status") { loadStatus(); loadZonos(); loadVoiceSettings(); loadSttSettings(); loadApiKey(); }
   if (view === "documents") updateDocUses();
   if (view === "transcribe") loadTranscribe();
@@ -1243,10 +1254,14 @@ function renderStatus() {
     </div>
     <div class="panel"><table><thead><tr><th>${t("engine")}</th><th>${t("runs")}</th><th>${t("voicesCol")}</th><th>${t("state")}</th><th title="${t("keepLoadedHint")}">${t("keepLoaded")}</th><th></th></tr></thead><tbody>
     ${s.engines.map(e => `<tr><td>${e.kind === "stt" ? t("sttLabel") : esc(e.label)}</td><td class="muted">${t("where." + e.kind)}${e.gpu ? " · GPU" : ""}</td><td class="num">${e.kind === "stt" ? "–" : e.voices}</td>
-      <td>${e.gpu && !e.loaded ? `<span class="dot" style="display:inline-block;margin-inline-end:8px"></span><span class="muted">${t("unloadedState")}</span>`
+      <td>${e.loading_seconds != null ? `<span class="dot busy" style="display:inline-block;margin-inline-end:8px"></span>${t("loadingState", { s: Math.round(e.loading_seconds) })}`
+        : e.waiting_seconds != null ? `<span class="dot busy" style="display:inline-block;margin-inline-end:8px"></span>${t("waitingState")}`
+        : e.gpu && !e.loaded && e.load_error ? `<span class="dot down" style="display:inline-block;margin-inline-end:8px"></span><span title="${esc(e.load_error)}">${esc(t("loadFailedState", { error: e.load_error.slice(0, 80) }))}</span>`
+        : e.gpu && !e.loaded ? `<span class="dot" style="display:inline-block;margin-inline-end:8px"></span><span class="muted">${t("unloadedState")}</span>`
         : `<span class="dot ${e.alive ? "ok" : "down"}" style="display:inline-block;margin-inline-end:8px"></span>${e.alive ? t("running") : t("notResponding")}`}</td>
       <td>${e.gpu ? `<input type="checkbox" data-keep="${esc(e.name)}" data-label="${esc(e.label)}" title="${t("keepLoadedHint")}" aria-label="${t("keepLoaded")}: ${esc(e.label)}"${e.keep_loaded ? " checked" : ""}>` : ""}</td>
-      <td>${e.gpu ? `<button type="button" class="btn small" data-engine-action="${e.loaded ? "unload" : "load"}" data-engine="${esc(e.name)}">${t(e.loaded ? "unload" : "load")}</button>` : ""}</td></tr>`).join("")}
+      <td>${!e.gpu ? "" : e.loading_seconds != null || e.waiting_seconds != null ? `<button type="button" class="btn small" disabled>${t("loadingShort")}</button>`
+        : `<button type="button" class="btn small" data-engine-action="${e.loaded ? "unload" : "load"}" data-engine="${esc(e.name)}">${t(e.loaded ? "unload" : "load")}</button>`}</td></tr>`).join("")}
     </tbody></table></div>`;
   if (document.activeElement !== $("autoUnload")) $("autoUnload").value = String(s.auto_unload_minutes ?? 30);
   $("haHelp").textContent = s.wyoming_port ? t("haHelp", { port: s.wyoming_port }) : t("haOff");
@@ -1581,6 +1596,7 @@ async function engineAction(action, name, button) {
     if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
     statusData = data;
     renderStatus();
+    if (action === "load") watchLoading(data, name);
   } catch (e) { setStatus(errorText(e), true); loadStatus(); }
 }
 $("statusBody").addEventListener("click", e => {
@@ -1615,25 +1631,47 @@ async function unloadedEngine(voice) {
   } catch { return null; }
 }
 // Choosing a voice loads its engine, so the first reading doesn't wait for it.
-let engineLoadRun = 0;
 async function loadSelectedEngine() {
-  const voice = selectedVoice(), run = ++engineLoadRun, started = performance.now();
-  const name = await unloadedEngine(voice);
-  if (!name || run !== engineLoadRun) return;
-  const free = () => run === engineLoadRun && !$("speak").disabled;  // a reading shows its own progress
-  const tick = setInterval(() => {
-    if (free()) setStatus(t("loadingEngine", { name, s: ((performance.now() - started) / 1000).toFixed(1) }), false, true);
-  }, 100);
+  const voice = selectedVoice();
+  if (!await unloadedEngine(voice)) return;
   try {
     const r = await api(`/engines/${encodeURIComponent(voice.engine)}/load`, { method: "POST" });
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
     statusData = data;
     renderStatus();
-    clearInterval(tick);
-    if (free()) setStatus(t("engineLoaded", { name }));
-  } catch (e) { clearInterval(tick); setStatus(errorText(e), true); }
+    watchLoading(data, voice.engine);
+  } catch (e) { setStatus(errorText(e), true); }
 }
+// Engines load on the server, which says in /status which are loading and for how long; this
+// asks every second while any is, so the progress shows on every screen and after a reload.
+let loadWatch = null, loadSeen = {};  // engine name -> label, for "loaded" or "didn't load" at the end
+function watchLoading(data = null, name = null) {
+  const e = data?.engines.find(e => e.name === name);
+  if (e) loadSeen[name] = e.label;
+  if (!loadWatch) loadWatch = setTimeout(pollLoading, data ? 1000 : 0);
+}
+async function pollLoading() {
+  loadWatch = null;
+  try { statusData = await (await api("/status")).json(); } catch { loadWatch = setTimeout(pollLoading, 3000); return; }
+  if (!document.querySelector('[data-view="status"]').hidden) renderStatus();
+  const free = !$("speak").disabled;  // a reading shows its own progress
+  const busy = statusData.engines.filter(e => e.loading_seconds != null || e.waiting_seconds != null);
+  if (busy.length) {
+    for (const e of busy) loadSeen[e.name] = e.label;
+    if (free) setStatus(busy.map(e => e.loading_seconds != null
+      ? t("loadingEngine", { name: e.label, s: Math.round(e.loading_seconds) }) : t("waitingEngine", { name: e.label })).join("\n"), false, true);
+    loadWatch = setTimeout(pollLoading, 1000);
+    return;
+  }
+  for (const name of Object.keys(loadSeen)) {
+    const e = statusData.engines.find(e => e.name === name);
+    if (free && e?.load_error) setStatus(t("engineLoadFailed", { name: e.label, error: e.load_error }), true);
+    else if (free && e?.loaded) setStatus(t("engineLoaded", { name: e.label }));
+  }
+  loadSeen = {};
+}
+watchLoading();  // one already loading (kept loaded, or started before a reload) shows too
 
 // Zonos-Hebrew: optional engine on another machine, connected or dropped without a restart.
 let zonos = null;
