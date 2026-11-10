@@ -871,6 +871,8 @@ WORKER_OPTIONS = {
                rng("repetition_penalty", 1.1, 1.0, 1.3, 0.05), text("instruction"),
                {**rng("guidance", 4.0, 1.0, 6.0, 0.5), "needs": "instruction"}, SEED],
 }
+WORKER_OPTIONS["zonos3"] = [SEED]
+WORKER_OPTIONS["voxtream"] = [toggle("clean", True), SEED]  # clean: Sidon on the voice's recording
 WORKER_OPTIONS["vibevoice7b"] = WORKER_OPTIONS["vibevoice"]
 WORKER_OPTIONS["breezefast"] = WORKER_OPTIONS["breeze"]
 
@@ -1155,7 +1157,15 @@ WORKERS = [
     # One process each: fast holds about twice the GPU memory for about 7 times the speed
     ("breeze", "Breeze TTS 2", "breeze", "breeze_worker.py", 30, 1800),
     ("breezefast", "Breeze TTS 2 Fast", "breeze", "breeze_worker.py --fast", 31, 1800),
+    # Its C++ server is built in the Docker image only (ZONOS3_SERVER); the worker itself needs nothing
+    # the server's env doesn't have
+    ("zonos3", "ZONOS3-Mini", "voice", "zonos3_worker.py", 32, 900),
+    ("voxtream", "voxtream2-he", "voxtream", "voxtream_worker.py", 33, 900),
 ]
+ZONOS3_SERVER = Path(os.environ.get("ZONOS3_SERVER", "/opt/zonos3/zonos3-server"))
+# Engines that only exist in the Docker image: left out quietly where what they need is missing
+# (on Windows), instead of a warning at every start.
+WORKER_NEEDS = {"zonos3": ZONOS3_SERVER, "voxtream": ENVS_DIR / "voxtream"}
 # What each worker's /info says, for listing it while it's unloaded (see the worker's own voices).
 HIGGS_PRESETS = ROOT / "models" / "higgs-voices"  # optional, see the README
 VIBEVOICE_INFO = {"sample_rate": 24000, "native_speed": False, "custom_voices": True,
@@ -1177,6 +1187,8 @@ WORKER_INFO = {
     "drama": {"sample_rate": 44100, "native_speed": False, "custom_voices": True, "builtin_voices": ["default"]},
     "breeze": BREEZE_INFO,
     "breezefast": BREEZE_INFO,
+    "zonos3": {"sample_rate": 44100, "native_speed": True, "custom_voices": True, "builtin_voices": []},
+    "voxtream": {"sample_rate": 24000, "native_speed": False, "custom_voices": True, "builtin_voices": []},
 }
 
 
@@ -1192,7 +1204,7 @@ def load_engines(device: str, server_port: int, zonos_url: str = ZONOS_URL) -> d
     LightBlue comes first in the list: it's the fastest and the UI's default."""
     workers = []
     for name, label, env, script, offset, timeout in WORKERS:
-        if not engine_enabled(name):
+        if not engine_enabled(name) or (name in WORKER_NEEDS and not WORKER_NEEDS[name].exists()):
             continue
         try:
             workers.append(RemoteEngine(name, label, env, script, server_port + offset, timeout, WORKER_INFO[name]))

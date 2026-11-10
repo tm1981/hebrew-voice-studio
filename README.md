@@ -27,6 +27,8 @@ a cloud service.
 | **Ming-3.0-tts** (inclusionAI, 0.5B) | GPU, worker process (env `ming`) | emma, george, charlotte | yes | **English only:** Hebrew text comes out as nonsense, though a recording of a Hebrew speaker works as the voice. About real time, 3.7 GB of GPU memory, 44 kHz. |
 | **Fish Audio Drama 3** (35B, 4-bit weights) | GPU, worker process (env `drama`) | a random voice | yes | Reads Hebrew and English. Very good English; in Hebrew 5 of 60 test readings had words added or dropped and 23 had a misheard word. About 1.5x real time, up to 21 GB of GPU memory, 44 kHz. The first start downloads about 40 GB. |
 | **Breeze TTS 2 / Fast** (BreezeBlue) | GPU, worker process (env `breeze`) | a random voice, a new one for each sentence | yes | **English only**, like Ming. The normal mode takes about 2.5 s per second of audio and 9.2 GB of GPU memory; Fast about 3x real time and 16 to 19 GB. Can follow a written description of the voice. |
+| **ZONOS3-Mini** (Zyphra, 800M) | GPU, **Docker image only** (its C++ server is built there) | none: recorded voices only | yes | Reads Hebrew well with a voice recorded in Hebrew (1 of 30 test readings had words added or dropped); its own English voices babble in Hebrew, so they aren't offered. About 7x real time, 3.4 GB of GPU memory, 44 kHz. |
+| **voxtream2-he** (flowty1, 0.5B) | GPU, **Docker image only** (env `voxtream`) | none: recorded voices only | yes | A Hebrew fine-tune of the streaming model Voxtream 2. About 4x real time, 2.5 GB. Its own page says the output is not always stable; the recording is cleaned first (Sidon), which removed the errors and the background sound in testing. |
 | **Zonos-Hebrew** | GPU, Docker on another machine | default | yes | Optional, off by default. Hebrew only; has emotions. |
 
 Chatterbox also reads Arabic. It finds Arabic by itself in each sentence, so there's nothing to
@@ -69,6 +71,8 @@ their models get downloaded. Unset, every engine starts (Zonos only if `ZONOS_UR
 | `drama` | Fish Audio Drama 3 |
 | `breeze` | Breeze TTS 2 |
 | `breezefast` | Breeze TTS 2 Fast |
+| `zonos3` | ZONOS3-Mini (Docker image only) |
+| `voxtream` | voxtream2-he (Docker image only) |
 | `zonos` | Zonos-Hebrew (also needs `ZONOS_URL`) |
 
 If you set `VOICE_ENGINES` and want Zonos, include `zonos` in the list. A misspelled name gives
@@ -582,6 +586,8 @@ consent of the person whose voice it is.
 | Ming-3.0-tts | `inclusionAI/Ming-3.0-tts-0.5B` | MIT | [model](https://huggingface.co/inclusionAI/Ming-3.0-tts-0.5B) · [code](https://github.com/inclusionAI/Ming-3.0-tts) |
 | Fish Audio Drama 3 | `fishaudio/drama-3`, run through [ComfyUI](https://github.com/comfyanonymous/ComfyUI) (GPL-3.0) and [ComfyUI-Drama3](https://github.com/PedroMarinhoDev/ComfyUI-Drama3) | **Fish Audio Community License:** personal and non-commercial use; no cloning of a real person's voice without their consent | [model](https://huggingface.co/fishaudio/drama-3) |
 | Breeze TTS 2 | `BreezeBlue/Breeze-TTS-2` | **Research and non-commercial** (weights); Apache 2.0 (code); consent needed to clone a voice | [model](https://huggingface.co/BreezeBlue/Breeze-TTS-2) · [code](https://github.com/breezeblue-ai/breeze-tts) |
+| ZONOS3-Mini | `Zyphra/ZONOS3-Mini` (the quantized GGUF files), run by its own C++/ggml server | Apache 2.0 | [model](https://huggingface.co/Zyphra/ZONOS3-Mini) · [code](https://github.com/Zyphra/ZONOS3-Mini) |
+| voxtream2-he | Hebrew fine-tune `flowty1/voxtream2-he` of `herimor/voxtream2`, with the Mimi codec, the ReDimNet speaker encoder and the Sidon speech enhancer | **GPL-3.0** (the parts keep their own licenses) | [model](https://huggingface.co/flowty1/voxtream2-he) · [code](https://github.com/flowtyone/voxtream2-he) |
 | Zonos (optional) | Zonos-Hebrew (`notmax123/Zonos-Hebrew`), built on Zyphra's Zonos | **CC BY-NC 4.0** (non-commercial) | [model](https://huggingface.co/notmax123/Zonos-Hebrew) · [code](https://github.com/maxmelichov/Zonos-Hebrew) |
 | Speech-to-text | Hebrew fine-tune `ivrit-ai/whisper-large-v3-turbo` of OpenAI's Whisper large-v3-turbo | Apache 2.0 | [model](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo) |
 | Speech detection | Silero VAD | MIT | [code](https://github.com/snakers4/silero-vad) |

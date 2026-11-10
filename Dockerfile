@@ -20,6 +20,25 @@
 # wheels are in seven of them; Drama 3 alone needs torch's cu132 build) is stored once in the
 # image. The cache is deleted at the end of the layer; the hardlinked files stay.
 
+# ZONOS3-Mini's C++/ggml server, built with CUDA in a throwaway stage (the final image has no
+# CUDA toolkit; at run time the server uses the nvidia-* wheels, see workers/zonos3_worker.py).
+# Not built for the build machine's CPU or GPU: plain x86-64-v3 code, and kernels for RTX 30xx,
+# 40xx and 50xx.
+FROM nvidia/cuda:12.8.1-devel-ubuntu24.04 AS zonos3
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git cmake build-essential ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+RUN git clone https://github.com/Zyphra/ZONOS3-Mini.git /src \
+ && cd /src && git checkout -q b820f6da278862d7c2db3e628d21cbae85983720 \
+ && git submodule update --init servers/ggml/ggml \
+ && cd servers/ggml \
+ && cmake -B build -DGGML_CUDA=ON -DGGML_NATIVE=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="86;89;120" \
+      -DCMAKE_EXE_LINKER_FLAGS="-Wl,--allow-shlib-undefined" \
+ && cmake --build build -j "$(nproc)" --target zonos3-server \
+ && mkdir /opt/zonos3 && cp build/zonos3-server /opt/zonos3/ && find build -name 'libggml*.so*' -exec cp -P {} /opt/zonos3/ \; \
+ && cp /src/LICENSE /opt/zonos3/
+
 FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.source="https://github.com/tm1981/hebrew-voice-studio" \
@@ -50,7 +69,7 @@ COPY requirements/linux/ /tmp/req/
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.6,source=/uv,target=/usr/local/bin/uv \
     set -eux; \
     uv python install 3.12.16; \
-    for env in voice omnivoice higgs qwentts magpie f5 ming drama breeze; do \
+    for env in voice omnivoice higgs qwentts magpie f5 ming drama breeze voxtream; do \
         uv venv --python 3.12.16 "/opt/envs/$env"; \
         uv pip install --python "/opt/envs/$env/bin/python" --no-deps -r "/tmp/req/$env.txt"; \
     done; \
@@ -67,6 +86,9 @@ RUN apt-get update \
 # which was slow enough (minutes) to look like Chatterbox hanging on every new container.
 # (The zip stays: it's what the splitter checks for before downloading again.)
 RUN /opt/envs/voice/bin/python -c "from spacy_pkuseg import pkuseg; pkuseg()"
+
+COPY --from=zonos3 /opt/zonos3 /opt/zonos3
+
 
 WORKDIR /app
 COPY . /app

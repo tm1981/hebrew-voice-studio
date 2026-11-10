@@ -143,5 +143,25 @@
     "memory": {"en": "16 to 19 GB", "he": "16 עד 19 GB"},
     "gpu_gb": 19,
     "tested": {"en": "English: 2 errors in 48 readings. Background sound in 14 of 48. The random voice changes between sentences, so pick a recorded one.", "he": "אנגלית: 2 שגיאות ב־48 הקראות. רעש רקע ב־14 מתוך 48. הקול האקראי משתנה בין משפטים, אז כדאי לבחור קול מוקלט."}
+  },
+  "zonos3": {
+    "hebrew": {"en": "Good, with a voice recorded in Hebrew", "he": "טובה, עם קול שהוקלט בעברית"},
+    "english": {"en": "Not tested here", "he": "לא נבדקה כאן"},
+    "clone": {"en": "Recorded voices only", "he": "רק קולות מוקלטים"},
+    "speed": {"en": "About 7× real time", "he": "בערך פי 7 מזמן אמת"},
+    "memory": {"en": "About 3.4 GB", "he": "בערך 3.4 GB"},
+    "gpu_gb": 3.4,
+    "tested": {"en": "Words added or dropped in 1 of 30 sentences with cloned voices. Its own English voices babble in Hebrew. Reads slowly by itself, so the app sets the pace; much faster than normal and words go missing.", "he": "מילים נוספו או נשמטו במשפט 1 מתוך 30 עם קולות משובטים. הקולות האנגליים שלו מגמגמים בעברית. קורא לאט מעצמו, לכן האפליקציה קובעת את הקצב; מהר בהרבה מהרגיל ומילים נעלמות."},
+    "yours": {"en": "Sounded slow before the pace was set.", "he": "נשמע איטי לפני שהקצב נקבע."}
+  },
+  "voxtream": {
+    "hebrew": {"en": "Fair", "he": "בינונית"},
+    "english": {"en": "English words inside Hebrew", "he": "מילים באנגלית בתוך עברית"},
+    "clone": {"en": "Recorded voices only", "he": "רק קולות מוקלטים"},
+    "speed": {"en": "About 4× real time", "he": "בערך פי 4 מזמן אמת"},
+    "memory": {"en": "About 2.5 GB", "he": "בערך 2.5 GB"},
+    "gpu_gb": 3,
+    "tested": {"en": "With the recording as it is: words added or dropped in 5 of 30 sentences. With the recording cleaned first (on in the app): 0 of 10. Its own page says the output is not always stable.", "he": "עם ההקלטה כמות שהיא: מילים נוספו או נשמטו ב־5 מתוך 30 משפטים. עם ניקוי ההקלטה קודם (פועל באפליקציה): 0 מתוך 10. הדף של המודל מציין שהתוצאה לא תמיד יציבה."},
+    "yours": {"en": "Had a background sound before the recording was cleaned.", "he": "היה רעש רקע לפני ניקוי ההקלטה."}
   }
 }
