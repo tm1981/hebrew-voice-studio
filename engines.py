@@ -166,12 +166,49 @@ def remove_voice_files(name: str) -> None:
         path.unlink()
 
 
+def stash_voice_files(name: str) -> Path | None:
+    """Moves a voice's recordings aside while new ones are tried, so a bad upload can't lose
+    the voice. -> the folder holding them (for restore_voice_files), or None if there were none."""
+    import shutil
+
+    sources = [p for p in [VOICES_DIR / name, *VOICES_DIR.glob(f"{name}.*")] if p.is_dir() or is_audio(p)]
+    if not sources:
+        return None
+    stash = PREPARED_DIR / f".old-{name}"
+    if stash.exists():
+        shutil.rmtree(stash)
+    stash.mkdir(parents=True)
+    for path in sources:
+        shutil.move(str(path), str(stash / path.name))
+    return stash
+
+
+def restore_voice_files(name: str, stash: Path | None) -> None:
+    """Puts back what stash_voice_files moved, in place of whatever is there now."""
+    import shutil
+
+    remove_voice_files(name)
+    if stash:
+        for path in stash.iterdir():
+            shutil.move(str(path), str(VOICES_DIR / path.name))
+        shutil.rmtree(stash)
+
+
+def discard_voice_stash(stash: Path | None) -> None:
+    """The new recordings were good: the old ones go."""
+    import shutil
+
+    if stash:
+        shutil.rmtree(stash, ignore_errors=True)
+
+
 def load_custom_voices(engine) -> None:
     """One unreadable recording skips that voice, not the whole engine."""
     for name in custom_voice_names():
         try:
             engine.add_voice(name, prepared_clip(name))
         except Exception as e:
+            engine.voices.pop(name, None)  # it may have been listed while the engine loaded
             print(f"[WARN] {engine.label}: skipped voice '{name}': {e}")
 
 
@@ -342,7 +379,9 @@ class ChatterboxEngine(OnDemand):
         optimize_t3(self.model)
         enable_speed_control(self.model)
         self.sample_rate = self.model.sr
-        self.voices = {"default": self.model.conds}
+        # Custom voices stay listed while they are built below, so a reading started meanwhile
+        # waits for the lock instead of failing with "No voice".
+        self.voices = {**dict.fromkeys(custom_voice_names()), "default": self.model.conds}
         self.loaded = True  # so the voices below are built now
         load_custom_voices(self)
         self.model.generate("שלום", language_id="he")  # warm-up so the first request isn't slow
@@ -909,10 +948,12 @@ class RemoteEngine(OnDemand):
                 raise RuntimeError(f"{self.label} worker didn't start within {self.startup_timeout:.0f}s")
             time.sleep(1)
         self.sample_rate = info["sample_rate"]
-        self.voices = dict.fromkeys(info["voices"])
         self.builtin_voices = set(info["builtin_voices"])
         self.native_speed = info["native_speed"]
         self.custom_voices = info["custom_voices"]
+        # Custom voices stay listed while they are registered below (F5 transcribes each one,
+        # which takes a while): a reading started meanwhile waits for the lock, not "No voice".
+        self.voices = dict.fromkeys([*info["voices"], *(custom_voice_names() if self.custom_voices else [])])
         self.loaded = True  # so the voices below are registered now
         self.last_used = time.monotonic()
         if self.custom_voices:
@@ -928,7 +969,7 @@ class RemoteEngine(OnDemand):
             if self.loaded:  # else it's registered when the worker starts again
                 r = requests.post(f"{self.url}/voices", json={"name": name, "path": str(audio_path)}, timeout=600)
                 if r.status_code != 200:
-                    raise RuntimeError(r.json().get("detail", r.text))
+                    raise RuntimeError(self._detail(r))
             self.voices[name] = None
 
     def remove_voice(self, name: str) -> None:
@@ -940,6 +981,34 @@ class RemoteEngine(OnDemand):
     def diacritize(self, text: str) -> str:
         return text
 
+    @staticmethod
+    def _detail(r) -> str:
+        """Why a worker refused: its JSON detail, or the plain text a crash inside it answers with."""
+        try:
+            detail = r.json().get("detail")
+        except (ValueError, AttributeError):
+            detail = None
+        detail = str(detail or r.text.strip()[:300] or f"HTTP {r.status_code}")
+        if "out of memory" in detail.lower():
+            return "not enough GPU memory. Unload another engine (Status page) and try again."
+        return detail
+
+    def _ask_worker(self, body: dict):
+        """One sentence from the worker. A worker that died (killed for memory, a crash) is
+        started again once, instead of failing every reading until someone unloads the engine."""
+        for attempt in (1, 2):
+            self.ensure_loaded()
+            try:
+                return requests.post(f"{self.url}/synthesize", json=body, timeout=600)
+            except requests.ConnectionError:
+                print(f"[load] {self.label}: the worker stopped answering", flush=True)
+                self._unload()
+                self.loaded = False
+                if attempt == 2:
+                    raise RuntimeError(f"{self.label} stopped while reading, twice. It may not fit in the free GPU memory.")
+            except requests.Timeout:
+                raise RuntimeError(f"{self.label} took more than 10 minutes on one sentence.")
+
     def synthesize(self, text, voice, speed, **options):
         options = {spec["key"]: options[spec["key"]] for spec in self.option_specs if spec["key"] in options}
         parts = []
@@ -947,9 +1016,9 @@ class RemoteEngine(OnDemand):
             self.ensure_loaded()
             for chunk in split_sentences(text, self.MAX_CHARS.get(self.name, 200)):
                 body = {"text": chunk, "voice": voice, "speed": speed if self.native_speed else 1.0, "options": options}
-                r = requests.post(f"{self.url}/synthesize", json=body, timeout=600)
+                r = self._ask_worker(body)
                 if r.status_code != 200:
-                    raise RuntimeError(f"{self.label}: {r.json().get('detail', r.text)}")
+                    raise RuntimeError(f"{self.label}: {self._detail(r)}")
                 audio, _ = sf.read(io.BytesIO(r.content), dtype="float32")
                 parts.append(audio)
             self.last_used = time.monotonic()

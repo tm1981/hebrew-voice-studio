@@ -96,6 +96,7 @@ import re
 import secrets
 import threading
 import time
+import traceback
 from typing import Any, Iterator
 from urllib.parse import quote
 
@@ -116,11 +117,14 @@ from engines import (
     VOICES_DIR,
     clean_options,
     default_device,
+    discard_voice_stash,
     level,
     load_engines,
     prepared_clip,
     remove_voice_files,
+    restore_voice_files,
     split_sentences,
+    stash_voice_files,
     stop_workers,
     voice_clips,
 )
@@ -395,6 +399,9 @@ def synthesize(engine, voice: str, text: str, req: TTSRequest) -> np.ndarray:
         raise HTTPException(400, str(e))
     except RuntimeError as e:  # a worker or remote engine failed or went away
         raise HTTPException(502, str(e))
+    except Exception as e:  # anything else still reaches the user as a message, not a cut connection
+        traceback.print_exc()
+        raise HTTPException(500, f"{engine.label}: {str(e) or type(e).__name__}")
 
 
 def resolve_voice(voice_id: str):
@@ -589,24 +596,40 @@ def add_voice(name: str = Form(...), files: list[UploadFile] = File(...)):
     suffixes = [os.path.splitext(f.filename or "")[1].lower() for f in files]
     if any(s not in VOICE_EXTENSIONS for s in suffixes):
         raise HTTPException(400, f"Upload {', '.join(sorted(VOICE_EXTENSIONS))} files.")
+    clips = [f.file.read(MAX_UPLOAD_BYTES + 1) for f in files]
+    if any(len(c) > MAX_UPLOAD_BYTES for c in clips):
+        raise HTTPException(413, f"A recording is over {MAX_UPLOAD_BYTES // 2**20} MB.")
     for engine in engines.values():
         engine.remove_voice(name)
-    remove_voice_files(name)
+    old = stash_voice_files(name)  # a voice being replaced comes back if the new recording is no good
+
+    def keep_old(why: str):
+        for engine in engines.values():
+            engine.remove_voice(name)
+        restore_voice_files(name, old)
+        if old:
+            try:
+                register_voice(name)
+            except Exception as e:
+                print(f"[WARN] voice '{name}': could not bring back the earlier recording: {e}")
+        reason = f": {why.rstrip('.')}." if why else "."
+        raise HTTPException(400, "Could not read that recording" + reason + (" The voice was left as it was." if old else ""))
+
+    VOICES_DIR.mkdir(exist_ok=True)
     if len(files) == 1:
-        (VOICES_DIR / f"{name}{suffixes[0]}").write_bytes(files[0].file.read())
+        (VOICES_DIR / f"{name}{suffixes[0]}").write_bytes(clips[0])
     else:
         folder = VOICES_DIR / name
         folder.mkdir()
-        for i, (f, suffix) in enumerate(zip(files, suffixes), 1):
-            (folder / f"clip{i}{suffix}").write_bytes(f.file.read())
+        for i, (clip, suffix) in enumerate(zip(clips, suffixes), 1):
+            (folder / f"clip{i}{suffix}").write_bytes(clip)
     try:
         errors = register_voice(name)
     except Exception as e:
-        remove_voice_files(name)
-        raise HTTPException(400, f"Could not read that recording: {e}")
+        keep_old(str(e) or "the file isn't audio the app can open")
     if not any(name in e.voices for e in engines.values()):
-        remove_voice_files(name)
-        raise HTTPException(400, f"Could not read that recording: {'; '.join(errors.values())}")
+        keep_old("; ".join(errors.values()))
+    discard_voice_stash(old)
     for label, error in errors.items():
         print(f"[WARN] {label}: voice '{name}' not added: {error}")
     return list_voices()
@@ -845,6 +868,10 @@ def tts_stream(req: TTSRequest):
                     yield frame(b"w", json.dumps({"item": n, "words": words}).encode())
         except HTTPException as e:
             yield frame(b"e", json.dumps({"detail": e.detail}).encode())
+            return
+        except Exception as e:  # the page shows this instead of "the connection dropped"
+            traceback.print_exc()
+            yield frame(b"e", json.dumps({"detail": f"{type(e).__name__}: {e}"}).encode())
             return
         meta = library.save(
             title=req.text.strip().split("\n")[0][:60], kind="dialogue" if req.dialogue else "reading",

@@ -153,6 +153,10 @@
   /* one screen tall and pinned, so the Read button under the text stays in view while the settings scroll */
   .editor-col { display: flex; flex-direction: column; gap: 10px; min-height: 0; position: sticky; top: 0; }
   .editor-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .compare-box { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+  .compare-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 7px 18px; max-height: 190px; overflow: auto; }
+  .compare-list label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+  .compare-list small { margin-inline-start: auto; color: var(--faint); font-size: 12px; text-align: end; }
   .editor { flex: 1; display: flex; min-height: 320px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
   .editor:focus-within { border-color: var(--line-strong); }
   textarea, .niqqud {
@@ -407,7 +411,15 @@
             <button type="button" id="viewRead" aria-pressed="false" data-i18n="tab.read" hidden></button>
           </div>
           <span class="spacer"></span>
-          <button type="button" class="btn ghost" id="compare"><svg><use href="#i-compare"/></svg><span data-i18n="compare"></span></button>
+          <button type="button" class="btn ghost" id="compare" aria-expanded="false" aria-controls="compareBox"><svg><use href="#i-compare"/></svg><span data-i18n="compare"></span></button>
+        </div>
+        <div class="panel compare-box" id="compareBox" hidden>
+          <p class="hint" data-i18n="compareHint"></p>
+          <div class="compare-list" id="compareList"></div>
+          <div class="row">
+            <button type="button" class="btn primary" id="compareRun"></button>
+            <button type="button" class="btn ghost" id="compareClear" data-i18n="compareClear"></button>
+          </div>
         </div>
         <div class="editor">
           <textarea id="text" maxlength="5000" dir="auto" data-i18n-placeholder="placeholder"></textarea>
@@ -724,7 +736,9 @@ const STR = {
     connecting: "Connecting…", ready: "Ready · {gpu}", serverDown: "Server unavailable",
     "nav.read": "Read", "nav.library": "Library", "nav.documents": "Long documents", "nav.voices": "Voices",
     "nav.words": "Pronunciation", "nav.transcribe": "Transcribe", "nav.status": "Settings",
-    "tab.text": "Text", "tab.niqqud": "With niqqud", "tab.read": "Follow along", compare: "Compare all engines",
+    "tab.text": "Text", "tab.niqqud": "With niqqud", "tab.read": "Follow along", compare: "Compare engines",
+    compareHint: "Tick the engines to compare. Each one reads the text in turn. A GPU engine that loads just for this is unloaded after its reading, so only one is in memory at a time.",
+    compareRun: "Compare {n} engines", compareClear: "Clear",
     markWords: "Mark each word exactly (Whisper)",
     markWordsHint: "Times every word with Whisper after its sentence is read, about 0.1 s a sentence, with the speech-to-text model in memory. Off: the sentence is marked exactly and the word is estimated.",
     placeholder: "Type or paste Hebrew text here",
@@ -784,7 +798,7 @@ const STR = {
     noServer: "The server didn't respond. Make sure server.py is running.", serverError: "The server returned error {code}",
     cutOff: "The connection dropped before the reading finished.",
     needTextCompare: "Type some text to compare.", comparing: "Comparing: {i} of {n}, {engine}…",
-    compareDone: "Comparison ready: {n} engines{failed}. Each reading is in the library.", compareFailed: ", {f} failed",
+    compareDone: "Comparison ready: {n} engines. Each reading is in the library.", compareFailed: "Failed:", compareNone: "No engine could read it.",
     nothingYet: "Nothing played yet", nothingSub: "Write text and press Read aloud",
     sentenceOf: "Sentence {i} of {n}", pauseNow: "Pause", play: "Play", pause: "Pause",
     download: "Download", sentences: "Sentences", audioLen: "{a}s of audio", madeIn: "{a}s of audio, made in {g}s",
@@ -924,7 +938,9 @@ const STR = {
     connecting: "מתחבר לשרת…", ready: "מוכן · {gpu}", serverDown: "השרת לא זמין",
     "nav.read": "הקראה", "nav.library": "ספרייה", "nav.documents": "מסמכים ארוכים", "nav.voices": "קולות",
     "nav.words": "מילון הגייה", "nav.transcribe": "תמלול", "nav.status": "הגדרות",
-    "tab.text": "טקסט", "tab.niqqud": "עם ניקוד", "tab.read": "מעקב קריאה", compare: "השוואה בין כל המנועים",
+    "tab.text": "טקסט", "tab.niqqud": "עם ניקוד", "tab.read": "מעקב קריאה", compare: "השוואת מנועים",
+    compareHint: "סמנו את המנועים להשוואה. כל מנוע קורא את הטקסט בתורו. מנוע GPU שנטען רק בשביל ההשוואה משוחרר אחרי הקריאה שלו, כך שרק אחד נמצא בזיכרון בכל רגע.",
+    compareRun: "השוואת {n} מנועים", compareClear: "ניקוי",
     markWords: "סימון מדויק של כל מילה (Whisper)",
     markWordsHint: "מתזמן כל מילה עם Whisper אחרי שהמשפט שלה מוקרא, כ-0.1 שנייה למשפט, ומודל התמלול נשאר בזיכרון. כבוי: המשפט מסומן בדיוק והמילה בהערכה.",
     placeholder: "כתבו או הדביקו כאן טקסט בעברית",
@@ -984,7 +1000,7 @@ const STR = {
     noServer: "השרת לא הגיב. ודאו ש-server.py רץ.", serverError: "השרת החזיר שגיאה {code}",
     cutOff: "החיבור לשרת נקטע לפני שההקראה הסתיימה.",
     needTextCompare: "כתבו טקסט כדי להשוות.", comparing: "משווה: {i} מתוך {n}, {engine}…",
-    compareDone: "ההשוואה מוכנה: {n} מנועים{failed}. כל הקראה נמצאת בספרייה.", compareFailed: ", {f} נכשלו",
+    compareDone: "ההשוואה מוכנה: {n} מנועים. כל הקראה נמצאת בספרייה.", compareFailed: "נכשלו:", compareNone: "אף מנוע לא הצליח לקרוא.",
     nothingYet: "עוד לא הושמע כלום", nothingSub: "כתבו טקסט ולחצו על הקרא",
     sentenceOf: "משפט {i} מתוך {n}", pauseNow: "הפסקה", play: "נגן", pause: "השהה",
     download: "הורדה", sentences: "משפטים", audioLen: "{a} שנ׳ שמע", madeIn: "{a} שנ׳ שמע, נוצר ב-{g} שנ׳",
@@ -1844,6 +1860,7 @@ function renderVoices(list, select) {
   chooseVoice(ids.includes(keep) ? keep : ids.includes(saved) ? saved : ids.includes("lightblue/noa") ? "lightblue/noa" : ids[0]);
   onVoiceChange();
   if ($("dialogue").checked) refreshSpeakers();
+  if (!$("compareBox").hidden) renderCompare();
 }
 // The voice box lists one engine's voices, so a voice from another engine has to go through here.
 function chooseVoice(id) {
@@ -2383,7 +2400,7 @@ async function generate(text, voice, { live, onProgress, dialogue = false }) {
 
 function setBusy(busy) {
   $("speak").disabled = busy;
-  $("compare").disabled = busy;
+  updateCompareRun();
 }
 
 async function speak() {
@@ -2416,32 +2433,76 @@ async function speak() {
 $("speak").addEventListener("click", speak);
 document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") speak(); });
 
+// Compare: the same text read by the engines ticked in the box, one after another, each into
+// the library. The ticks are remembered.
+function comparePicked() {
+  try { return new Set(JSON.parse(storage.get("kol-compare") || "[]")); } catch { return new Set(); }
+}
+function renderCompare() {
+  const picked = comparePicked(), box = $("compareList");
+  box.innerHTML = "";
+  for (const engine of engines()) {
+    const memory = engineInfo[engine]?.memory, label = document.createElement("label");
+    label.innerHTML = `<input type="checkbox" class="lib-check" value="${escapeHtml(engine)}"${picked.has(engine) ? " checked" : ""}>
+      <span>${escapeHtml(voices.find(v => v.engine === engine).engine_label || engine)}</span>
+      ${memory ? `<small>${escapeHtml(memory[lang] ?? memory.en)}</small>` : ""}`;
+    box.append(label);
+  }
+  updateCompareRun();
+}
+const compareChosen = () => [...$("compareList").querySelectorAll("input:checked")].map(i => i.value);
+function updateCompareRun() {
+  const n = compareChosen().length;
+  $("compareRun").textContent = t("compareRun", { n });
+  $("compareRun").disabled = n < 2 || $("speak").disabled;
+}
+$("compare").addEventListener("click", () => {
+  const open = $("compareBox").hidden;
+  $("compareBox").hidden = !open;
+  $("compare").setAttribute("aria-expanded", open);
+  if (open) renderCompare();
+});
+$("compareList").addEventListener("change", () => {
+  storage.set("kol-compare", JSON.stringify(compareChosen()));
+  updateCompareRun();
+});
+$("compareClear").addEventListener("click", () => { storage.set("kol-compare", "[]"); renderCompare(); });
+
 // One voice per engine: the selected voice's name if that engine has it (e.g. a custom
 // voice), otherwise the engine's first voice.
 async function compareEngines() {
   const text = textEl.value.trim();
   if (!text) { setStatus(t("needTextCompare"), true); textEl.focus(); return; }
   const name = selectedVoice().name;
-  const picks = engines().map(engine =>
-    voices.find(v => v.engine === engine && v.name === name) || voices.find(v => v.engine === engine));
+  const picks = compareChosen().map(engine =>
+    voices.find(v => v.engine === engine && v.name === name) || voices.find(v => v.engine === engine)).filter(Boolean);
+  if (picks.length < 2) return;
   setBusy(true);
   stopLive();
-  const results = [];
+  const results = [], failed = [];
   try {
     for (const [i, voice] of picks.entries()) {
       setStatus(t("comparing", { i: i + 1, n: picks.length, engine: voice.engine_label }), false, true);
-      try { results.push(await generate(text, voice, { live: false })); } catch (e) { console.warn(voice.id, e); }
+      let before = null;
+      try { before = (await (await api("/status")).json()).engines.find(e => e.name === voice.engine); } catch {}
+      try { results.push(await generate(text, voice, { live: false })); }
+      catch (e) { failed.push(`${voice.engine_label}: ${errorText(e)}`); }
+      // Only one model in GPU memory at a time: an engine this comparison loaded goes again.
+      // One that was loaded before, or is kept loaded, stays.
+      if (before?.gpu && !before.loaded && !before.keep_loaded)
+        await api(`/engines/${encodeURIComponent(voice.engine)}/unload`, { method: "POST" }).catch(() => {});
     }
     await refreshLibrary();
     if (results.length) await openItem(results[0].meta.id, { blob: results[0].blob });
-    const failed = picks.length - results.length;
-    setStatus(t("compareDone", { n: results.length, failed: failed ? t("compareFailed", { f: failed }) : "" }));
-    go("library");
+    const lines = [results.length ? t("compareDone", { n: results.length }) : t("compareNone")];
+    if (failed.length) lines.push(t("compareFailed"), ...failed);
+    setStatus(lines.join("\n"), !results.length, failed.length > 0);
+    if (results.length) go("library");
   } finally {
     setBusy(false);
   }
 }
-$("compare").addEventListener("click", compareEngines);
+$("compareRun").addEventListener("click", compareEngines);
 
 // ---------- Player ----------
 // Opens a library item. `blob` skips refetching audio the stream just delivered.

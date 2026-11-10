@@ -67,7 +67,13 @@ def serve(backend, description: str) -> None:
     async def synthesize(req: SynthesizeRequest):
         if req.voice not in backend.voices:
             raise HTTPException(400, f"No voice '{req.voice}'")
-        audio = np.asarray(backend.synthesize(req.text, req.voice, req.speed, **req.options), dtype=np.float32)
+        try:
+            audio = np.asarray(backend.synthesize(req.text, req.voice, req.speed, **req.options), dtype=np.float32)
+        except Exception as e:  # e.g. CUDA out of memory: say why, in the JSON the server reads
+            import traceback
+
+            traceback.print_exc()
+            raise HTTPException(500, f"{type(e).__name__}: {e}")
         buf = io.BytesIO()
         sf.write(buf, audio, backend.sample_rate, format="WAV", subtype="PCM_16")
         return Response(buf.getvalue(), media_type="audio/wav")

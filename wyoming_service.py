@@ -180,8 +180,9 @@ class Handler(AsyncEventHandler):
                 for start in range(0, len(pcm), CHUNK_SAMPLES):
                     await self.write_event(AudioChunk(audio=pcm[start:start + CHUNK_SAMPLES].tobytes(), **fmt).event())
             await self.write_event(AudioStop().event())
-        except ValueError as e:
-            await self.write_event(Error(text=str(e), code="tts-failed").event())
+        except Exception as e:  # Home Assistant gets the reason instead of a closed connection
+            print(f"[wyoming] reading failed: {e}")
+            await self.write_event(Error(text=str(e) or type(e).__name__, code="tts-failed").event())
 
 
 def split_ready(text: str) -> tuple[str, str]:

@@ -366,7 +366,9 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
 
 - **Read:** type or paste Hebrew, pick a voice, press **Read aloud** (Ctrl+Enter). Sentences
   play as soon as each one is ready. **With niqqud** shows how the engine will read the text.
-  **Compare all engines** reads the text with one voice from each engine.
+  **Compare engines** opens a list of the engines: tick two or more and each reads the text in
+  turn, into the library. A GPU engine that loads just for the comparison is unloaded after its
+  reading, so only one is in GPU memory at a time.
 - **Text tricks:** `[הפסקה 2]` or `[pause 2]` adds a 2-second pause. A new line (a heading, a
   list item) pauses a little longer than the end of a sentence, and a blank line (a new
   paragraph) longer still: 0.5 and 0.75 seconds with the default pause. Turn on **Dialogue** and
