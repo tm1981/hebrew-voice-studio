@@ -1149,6 +1149,38 @@ def auto_unload_loop() -> None:
 threading.Thread(target=auto_unload_loop, daemon=True, name="auto-unload").start()
 
 
+# GPU memory each engine needs, measured ("gpu_gb" in engine_info.json), so room can be made
+# before one loads instead of it failing half-way (gpu_room.py).
+GPU_GB = {name: info["gpu_gb"] for name, info in json.loads((ROOT / "engine_info.json").read_text(encoding="utf-8")).items()
+          if info.get("gpu_gb")}
+GPU_GB["stt"] = 1.7  # Whisper large-v3-turbo
+
+
+def make_room_for(engine) -> str | None:
+    import gpu_room
+    from engines import OnDemand
+
+    need = GPU_GB.get(engine.name)
+    if not need or not torch.cuda.is_available():
+        return None
+
+    def free_gb() -> float:
+        used, total = gpu_memory()
+        return (total - used) / 2**30
+
+    others = [e for e in gpu_parts().values() if isinstance(e, OnDemand) and e is not engine and e.loaded]
+    return gpu_room.make_room(engine, need, free_gb, others, keep_loaded)
+
+
+def watch_gpu_room() -> None:
+    from engines import OnDemand
+
+    OnDemand.before_load = make_room_for
+
+
+watch_gpu_room()
+
+
 # --- Backup and restore of the user's data (see backup.py), from the web UI: in Docker the data
 # is inside a volume
 

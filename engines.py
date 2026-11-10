@@ -298,6 +298,9 @@ class OnDemand:
     load_error = None     # why the last load failed, until one succeeds
     load_waiting = None   # time.monotonic() while a load waits for the engine to finish other work
     LOG_EVERY = 30        # seconds between "still loading" lines in the log
+    # Set by the server: called with the engine just before it loads, to free GPU memory for it
+    # (gpu_room.py). -> None, or a sentence saying it doesn't fit, used if the load then fails.
+    before_load = None
 
     def ensure_loaded(self) -> None:
         """Call with self.lock held."""
@@ -311,14 +314,24 @@ class OnDemand:
 
             print(f"[load] {self.label}: loading", flush=True)
             threading.Thread(target=still_loading, daemon=True).start()
+            short = None
             try:
+                if OnDemand.before_load:
+                    try:
+                        short = OnDemand.before_load(self)
+                    except Exception as e:  # making room is a help, never a reason not to load
+                        print(f"[WARN] {self.label}: couldn't check GPU memory: {e}", flush=True)
                 self._load()
                 self.loaded = True
                 self.load_error = None
                 print(f"[load] {self.label}: loaded in {time.monotonic() - self.loading_since:.0f}s", flush=True)
             except BaseException as e:
                 self.load_error = str(e) or type(e).__name__
+                if short:  # it didn't fit, and that is very likely why
+                    self.load_error = f"{self.label} could not load. {short}"
                 print(f"[load] {self.label}: failed after {time.monotonic() - self.loading_since:.0f}s: {self.load_error}", flush=True)
+                if short and isinstance(e, Exception):
+                    raise RuntimeError(self.load_error) from e
                 raise
             finally:
                 done.set()

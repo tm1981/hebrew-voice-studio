@@ -282,7 +282,9 @@ To build the image yourself: `docker build -t hebrew-voice:dev .` in this folder
   first reading after an update faster; it's safe to delete and isn't in backups.
 - `VOICE_ENGINES=lightblue,kokoro,qwen,magpie` starts only those engines (and downloads only
   their models; [all the names](#choosing-which-engines-start)). GPU engines start unloaded and load when you choose one of their voices, so
-  only what you use takes GPU memory; unused ones unload by themselves after 30 minutes.
+  only what you use takes GPU memory; unused ones unload by themselves after 30 minutes. When
+  an engine is about to load and doesn't fit in the free GPU memory, idle engines are unloaded
+  first, longest idle first (never ones marked "keep loaded").
 - `ZONOS_URL=http://<host>:7860/` connects Zonos-Hebrew (or set it in the web UI).
 - Port 10200 is the Wyoming port for [Home Assistant](#home-assistant).
 - In Docker, clients that reach the app through Docker's own gateway address (for example

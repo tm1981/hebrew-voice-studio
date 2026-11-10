@@ -30,6 +30,7 @@
     "clone": {"en": "Yes", "he": "כן"},
     "speed": {"en": "About 4× real time", "he": "בערך פי 4 מזמן אמת"},
     "memory": {"en": "About 4 GB", "he": "בערך 4 GB"},
+    "gpu_gb": 4,
     "tested": {"en": "Has controls for expression and how closely it follows the voice. Stops by itself after the last word: extra words at the end went from 21 to 5 of 132 readings with the built-in voice, and none of 132 with a clone.", "he": "יש בו שליטה בהבעה ובקרבה לקול. עוצר לבד אחרי המילה האחרונה: מילים עודפות בסוף ירדו מ־21 ל־5 מתוך 132 הקראות בקול המובנה, ואף לא אחת מתוך 132 עם קול משובט."},
     "yours": {"en": "Very good in Hebrew and English. Your main model for now.", "he": "טוב מאוד בעברית ובאנגלית. המודל הראשי שלך כרגע."}
   },
@@ -37,6 +38,8 @@
     "hebrew": {"en": "Fair", "he": "בינונית"},
     "english": {"en": "Reads it", "he": "קורא"},
     "clone": {"en": "Good", "he": "טוב"},
+    "memory": {"en": "About 5.4 GB", "he": "בערך 5.4 GB"},
+    "gpu_gb": 5.4,
     "tested": {"en": "Fewer than 16 steps cut the endings of sentences.", "he": "פחות מ־16 צעדים חותך סופי משפטים."},
     "yours": {"en": "Fair overall, kept for its cloning.", "he": "בינוני בסך הכול, נשאר בגלל השיבוט."}
   },
@@ -46,6 +49,7 @@
     "clone": {"en": "Good", "he": "טוב"},
     "speed": {"en": "About 2.5× real time", "he": "בערך פי 2.5 מזמן אמת"},
     "memory": {"en": "About 10.4 GB", "he": "בערך 10.4 GB"},
+    "gpu_gb": 10.4,
     "tested": {"en": "A misheard word in 4 of 40 sentences at the current setting.", "he": "מילה שנשמעה לא נכון ב־4 מתוך 40 משפטים בהגדרה הנוכחית."},
     "yours": {"en": "Sounds good.", "he": "נשמע טוב."}
   },
@@ -55,6 +59,7 @@
     "clone": {"en": "Good", "he": "טוב"},
     "speed": {"en": "About 8× real time", "he": "בערך פי 8 מזמן אמת"},
     "memory": {"en": "About 5.7 GB", "he": "בערך 5.7 GB"},
+    "gpu_gb": 5.7,
     "tested": {"en": "Whisper heard 98-100% of words, with no last words lost in 32 sentences. The clearest in testing. The model stops by itself after about 13 s, so the app reads at most 120 characters at a time.", "he": "Whisper שמע 98-100% מהמילים, בלי מילה אחרונה שאבדה ב־32 משפטים. הברור ביותר בבדיקות. המודל עוצר מעצמו אחרי כ־13 שניות, לכן האפליקציה מקריאה עד 120 תווים בכל פעם."},
     "yours": {"en": "Very clear.", "he": "ברור מאוד."}
   },
@@ -64,6 +69,7 @@
     "clone": {"en": "No, 15 fixed voices", "he": "לא, 15 קולות קבועים"},
     "speed": {"en": "About 1.4× real time", "he": "בערך פי 1.4 מזמן אמת"},
     "memory": {"en": "About 3.2 GB", "he": "בערך 3.2 GB"},
+    "gpu_gb": 3.2,
     "tested": {"en": "Whisper heard 98-99% of words, with no cut-offs in 60 readings.", "he": "Whisper שמע 98-99% מהמילים, בלי קטיעות ב־60 הקראות."}
   },
   "f5": {
@@ -71,6 +77,8 @@
     "english": {"en": "Good, in sentences with no Hebrew. English words inside a Hebrew sentence come out wrong", "he": "טובה, במשפטים בלי עברית. מילים באנגלית בתוך משפט בעברית יוצאות משובשות"},
     "clone": {"en": "Yes, your recorded voices only", "he": "כן, רק הקולות שהקלטת"},
     "speed": {"en": "About 2.5× real time or faster", "he": "בערך פי 2.5 מזמן אמת או יותר"},
+    "memory": {"en": "Up to 6.3 GB", "he": "עד 6.3 GB"},
+    "gpu_gb": 6.3,
     "tested": {"en": "Hebrew: words added or garbled in 4 of 120 readings. English: 1 added word in 32 readings.", "he": "עברית: מילים נוספות או משובשות ב־4 מתוך 120 הקראות. אנגלית: מילה נוספת אחת ב־32 הקראות."},
     "yours": {"en": "You liked English in your voice.", "he": "אהבת את האנגלית בקול שלך."}
   },
@@ -80,6 +88,7 @@
     "clone": {"en": "Yes, no transcript needed. A longer, quiet recording helps a lot", "he": "כן, בלי תמליל. הקלטה ארוכה ושקטה עוזרת מאוד"},
     "speed": {"en": "About real time per read, twice that with retakes", "he": "בערך זמן אמת להקראה, כפול עם הקראות חוזרות"},
     "memory": {"en": "About 7 GB", "he": "בערך 7 GB"},
+    "gpu_gb": 7,
     "tested": {"en": "Background sound in 6 of 36 readings even with retakes.", "he": "רעש רקע ב־6 מתוך 36 הקראות גם עם הקראות חוזרות."},
     "yours": {"en": "English can still have a bit of background music while speaking.", "he": "באנגלית עדיין יכולה להיות מעט מוזיקת רקע בזמן הדיבור."}
   },
@@ -89,6 +98,7 @@
     "clone": {"en": "Yes, no transcript needed. A longer, quiet recording helps a lot", "he": "כן, בלי תמליל. הקלטה ארוכה ושקטה עוזרת מאוד"},
     "speed": {"en": "About real time per read, twice that with retakes. 5 steps saved only about 2 s", "he": "בערך זמן אמת להקראה, כפול עם הקראות חוזרות. 5 צעדים חסכו רק כ־2 שניות"},
     "memory": {"en": "About 19 GB", "he": "בערך 19 GB"},
+    "gpu_gb": 19,
     "tested": {"en": "Hebrew with a clean voice: no words added or dropped in 20 sentences. Background sound in 5 of 36 readings with retakes.", "he": "עברית עם קול נקי: בלי מילים שנוספו או נשמטו ב־20 משפטים. רעש רקע ב־5 מתוך 36 הקראות עם הקראות חוזרות."},
     "yours": {"en": "Excellent in Hebrew with female1. Not as good with your mp3 clone.", "he": "מצוין בעברית עם female1. פחות טוב עם השיבוט מה־mp3 שלך."}
   },
@@ -104,6 +114,7 @@
     "clone": {"en": "Yes, a Hebrew recording works for English", "he": "כן, הקלטה בעברית עובדת גם לאנגלית"},
     "speed": {"en": "About real time", "he": "בערך זמן אמת"},
     "memory": {"en": "About 3.7 GB", "he": "בערך 3.7 GB"},
+    "gpu_gb": 3.7,
     "tested": {"en": "Built-in voice and your clone: no wrong words in 16 readings each. female1: 2 of 16.", "he": "קול מובנה והשיבוט שלך: בלי מילים שגויות ב־16 הקראות כל אחד. female1: שתיים מתוך 16."}
   },
   "drama": {
@@ -112,6 +123,7 @@
     "clone": {"en": "Yes, a Hebrew recording works for English", "he": "כן, הקלטה בעברית עובדת גם לאנגלית"},
     "speed": {"en": "About 1.3 to 1.9× real time", "he": "בערך פי 1.3 עד 1.9 מזמן אמת"},
     "memory": {"en": "Up to 21 GB", "he": "עד 21 GB"},
+    "gpu_gb": 21,
     "tested": {"en": "English with your clone: no wrong words in 32 readings. Hebrew with your clone: 5 of 60 had words added or dropped and 23 had a misheard word.", "he": "אנגלית עם השיבוט שלך: בלי מילים שגויות ב־32 הקראות. עברית עם השיבוט שלך: ב־5 מתוך 60 נוספו או נשמטו מילים וב־23 מילה נשמעה לא נכון."}
   },
   "breeze": {
@@ -120,6 +132,7 @@
     "clone": {"en": "Yes, a Hebrew recording works for English", "he": "כן, הקלטה בעברית עובדת גם לאנגלית"},
     "speed": {"en": "Slow: about 2.5 s for each second of audio", "he": "איטי: בערך 2.5 שניות לכל שנייה של שמע"},
     "memory": {"en": "About 9.2 GB", "he": "בערך 9.2 GB"},
+    "gpu_gb": 9.2,
     "tested": {"en": "English: 2 errors in 48 readings. Background sound in 14 of 48. The random voice changes between sentences, so pick a recorded one.", "he": "אנגלית: 2 שגיאות ב־48 הקראות. רעש רקע ב־14 מתוך 48. הקול האקראי משתנה בין משפטים, אז כדאי לבחור קול מוקלט."}
   },
   "breezefast": {
@@ -128,6 +141,7 @@
     "clone": {"en": "Yes, a Hebrew recording works for English", "he": "כן, הקלטה בעברית עובדת גם לאנגלית"},
     "speed": {"en": "About 3× real time", "he": "בערך פי 3 מזמן אמת"},
     "memory": {"en": "16 to 19 GB", "he": "16 עד 19 GB"},
+    "gpu_gb": 19,
     "tested": {"en": "English: 2 errors in 48 readings. Background sound in 14 of 48. The random voice changes between sentences, so pick a recorded one.", "he": "אנגלית: 2 שגיאות ב־48 הקראות. רעש רקע ב־14 מתוך 48. הקול האקראי משתנה בין משפטים, אז כדאי לבחור קול מוקלט."}
   }
 }

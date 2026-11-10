@@ -186,6 +186,7 @@
   .speakers label { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; align-items: center; font-size: 13px; }
   .speak { align-self: flex-end; min-width: 260px; justify-content: space-between; padding: 12px 16px; font-size: 15px; border-radius: 10px; }
   .speak kbd { font: 400 11.5px var(--ui); opacity: .65; direction: ltr; }
+  .speak.stop { justify-content: center; background: var(--raised); border-color: var(--line-strong); color: var(--ink); }
   .reset { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--faint); font-size: 12px; cursor: pointer; text-decoration: underline; }
 
   /* Lists (library, voices, dictionary) */
@@ -738,7 +739,7 @@ const STR = {
     "nav.words": "Pronunciation", "nav.transcribe": "Transcribe", "nav.status": "Settings",
     "tab.text": "Text", "tab.niqqud": "With niqqud", "tab.read": "Follow along", compare: "Compare engines",
     compareHint: "Tick the engines to compare. Each one reads the text in turn. A GPU engine that loads just for this is unloaded after its reading, so only one is in memory at a time.",
-    compareRun: "Compare {n} engines", compareClear: "Clear",
+    compareRun: "Compare {n} engines", compareClear: "Clear", stopReading: "Stop", stopped: "Stopped.",
     markWords: "Mark each word exactly (Whisper)",
     markWordsHint: "Times every word with Whisper after its sentence is read, about 0.1 s a sentence, with the speech-to-text model in memory. Off: the sentence is marked exactly and the word is estimated.",
     placeholder: "Type or paste Hebrew text here",
@@ -940,7 +941,7 @@ const STR = {
     "nav.words": "מילון הגייה", "nav.transcribe": "תמלול", "nav.status": "הגדרות",
     "tab.text": "טקסט", "tab.niqqud": "עם ניקוד", "tab.read": "מעקב קריאה", compare: "השוואת מנועים",
     compareHint: "סמנו את המנועים להשוואה. כל מנוע קורא את הטקסט בתורו. מנוע GPU שנטען רק בשביל ההשוואה משוחרר אחרי הקריאה שלו, כך שרק אחד נמצא בזיכרון בכל רגע.",
-    compareRun: "השוואת {n} מנועים", compareClear: "ניקוי",
+    compareRun: "השוואת {n} מנועים", compareClear: "ניקוי", stopReading: "עצירה", stopped: "נעצר.",
     markWords: "סימון מדויק של כל מילה (Whisper)",
     markWordsHint: "מתזמן כל מילה עם Whisper אחרי שהמשפט שלה מוקרא, כ-0.1 שנייה למשפט, ומודל התמלול נשאר בזיכרון. כבוי: המשפט מסומן בדיוק והמילה בהערכה.",
     placeholder: "כתבו או הדביקו כאן טקסט בעברית",
@@ -1190,8 +1191,8 @@ async function api(url, opts = {}) {
   }
   return fetch(url, opts);
 }
-const postJSON = (url, body, method = "POST") =>
-  api(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const postJSON = (url, body, method = "POST", signal) =>
+  api(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
 // For plain links (downloads), which can't send headers: the key goes in the URL.
 function withKey(url) {
   const key = storage.get("kol-api-key");
@@ -2333,13 +2334,13 @@ async function readFrames(response, onFrame) {
 
 // Synthesizes text (with one voice, or per speaker in dialogue mode) into a library item.
 // With live=true each sentence plays as soon as it arrives. -> {meta, blob}
-async function generate(text, voice, { live, onProgress, dialogue = false }) {
+async function generate(text, voice, { live, onProgress, dialogue = false, signal }) {
   const fmtNow = format();
   const r = await postJSON("/tts/stream", {
     text, format: fmtNow, voice: voice.id, speed: +$("speed").value, normalize: $("normalize").checked,
     options: engineOpts, sentence_pause: +$("sentencePause").value, use_cache: $("useCache").checked,
     dialogue, speakers: dialogue ? { ...speakerVoices } : {}, word_timing: $("markWords").checked,
-  });
+  }, "POST", signal);
   if (!r.ok) {
     const detail = await r.json().catch(() => ({}));
     throw new Error(typeof detail.detail === "string" ? detail.detail : t("serverError", { code: r.status }));
@@ -2398,16 +2399,33 @@ async function generate(text, voice, { live, onProgress, dialogue = false }) {
   return { meta, blob };
 }
 
+let busyNow = false;
 function setBusy(busy) {
+  busyNow = busy;
   $("speak").disabled = busy;
   updateCompareRun();
 }
 
+// While a reading is on its way the Read button is a Stop button: it drops the connection, so
+// the server stops after the sentence it is on, and what was read so far isn't saved.
+let speakAbort = null;
+function showStop(on) {
+  const label = $("speak").querySelector("span");
+  label.dataset.i18n = on ? "stopReading" : "speak";
+  label.textContent = t(label.dataset.i18n);
+  $("speak").querySelector("kbd").hidden = on;
+  $("speak").classList.toggle("stop", on);
+  if (on) $("speak").disabled = false;
+}
+
 async function speak() {
+  if (speakAbort) { speakAbort.abort(); return; }
   const text = textEl.value.trim();
   if (!text) { setStatus(t("needText"), true); go("read"); textEl.focus(); return; }
-  if ($("speak").disabled) return;
+  if (busyNow) return;
   setBusy(true);
+  const signal = (speakAbort = new AbortController()).signal;
+  showStop(true);
   const started = performance.now();
   let done = 0;
   const cold = await unloadedEngine(selectedVoice());
@@ -2416,7 +2434,8 @@ async function speak() {
     setStatus(done ? t("liveProgress", { n: done, s }) : cold ? t("loadingEngine", { name: cold, s }) : t("generating", { s }), false, true);
   }, 100);
   try {
-    const { meta, blob } = await generate(text, selectedVoice(), { live: true, onProgress: n => done = n, dialogue: $("dialogue").checked });
+    signal.throwIfAborted();
+    const { meta, blob } = await generate(text, selectedVoice(), { live: true, onProgress: n => done = n, dialogue: $("dialogue").checked, signal });
     await refreshLibrary();
     await openItem(meta.id, { blob });  // already heard live; the player is for replay and download
     clearInterval(tick);
@@ -2424,14 +2443,18 @@ async function speak() {
   } catch (e) {
     stopLive();
     clearInterval(tick);
-    setStatus(errorText(e), true);
+    if (signal.aborted) { setStatus(t("stopped")); refreshLibrary(); }  // it may have just finished and been saved
+    else setStatus(errorText(e), true);
   } finally {
     clearInterval(tick);
+    speakAbort = null;
+    showStop(false);
     setBusy(false);
   }
 }
 $("speak").addEventListener("click", speak);
-document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") speak(); });
+// Ctrl+Enter starts a reading; it never stops one (too easy to press twice).
+document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !speakAbort) speak(); });
 
 // Compare: the same text read by the engines ticked in the box, one after another, each into
 // the library. The ticks are remembered.
@@ -2454,7 +2477,7 @@ const compareChosen = () => [...$("compareList").querySelectorAll("input:checked
 function updateCompareRun() {
   const n = compareChosen().length;
   $("compareRun").textContent = t("compareRun", { n });
-  $("compareRun").disabled = n < 2 || $("speak").disabled;
+  $("compareRun").disabled = n < 2 || busyNow;
 }
 $("compare").addEventListener("click", () => {
   const open = $("compareBox").hidden;
