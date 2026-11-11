@@ -37,3 +37,5 @@ docker/
 
 # Windows-only launchers
 *.bat
+jobs.json
+jobs.tmp

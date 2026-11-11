@@ -386,8 +386,14 @@ folder; the server starts minimized when you sign in). `remove_autostart.bat` un
 - **Sentences** (button on the player): replay, re-read or edit one sentence; the full file is
   rebuilt.
 - **Library:** every reading, kept across restarts, with search and download (WAV, MP3, FLAC, Opus).
+  It shows how many readings there are and their size on disk. **Keep readings** (forever by
+  default) can delete readings older than 7, 30, 90 or 365 days by themselves; the pin on a
+  reading keeps it whatever its age.
 - **Long documents:** a TXT, DOCX or PDF is read chapter by chapter in the background, with a
-  ZIP of all chapters at the end.
+  ZIP of all chapters at the end. Text over 5,000 characters typed or pasted in the Read page is
+  offered here too. A job is shown again after a reload or from another device. A chapter that
+  fails is tried once more; a job that failed, was stopped, or was cut off by a restart can be
+  **continued** from the first chapter not read yet.
 - **Voices:** all voices by engine. **Add a voice** takes up to 5 recordings of one speaker
   (upload or record); each can be played, trimmed by dragging, cut to the speech, and leveled
   before saving. **Check quality** flags noise, clipping and length and shows what Whisper

@@ -201,6 +201,10 @@
   .lib-row .play-sm { border-radius: 50%; }
   .lib-check { width: 17px; height: 17px; flex: none; margin: 0; accent-color: var(--accent); cursor: pointer; }
   .lib-toolbar { flex-wrap: wrap; }
+  .lib-keep { align-items: center; margin-top: -4px; }
+  .lib-keep select { width: auto; }
+  .pin[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+  #count.over { color: var(--error); font-weight: 600; }
   .lib-toolbar select { width: auto; max-width: 220px; }
   .lib-group { gap: 10px; margin-inline-start: auto; font-size: 13px; color: var(--muted); }
   .list > li.lib-version { padding-inline-start: 44px; background: var(--raised); }
@@ -357,6 +361,7 @@
   <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3zM12 15v5"/></symbol>
   <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" /></symbol>
@@ -423,7 +428,7 @@
           </div>
         </div>
         <div class="editor">
-          <textarea id="text" maxlength="5000" dir="auto" data-i18n-placeholder="placeholder"></textarea>
+          <textarea id="text" dir="auto" data-i18n-placeholder="placeholder"></textarea>
           <div class="niqqud" id="niqqud" dir="rtl" hidden aria-live="polite"></div>
           <div class="niqqud readalong" id="readalong" dir="auto" hidden></div>
         </div>
@@ -496,6 +501,18 @@
         <select id="libVoice" data-i18n-title="allVoices"></select>
         <label class="switch lib-group"><span data-i18n="groupSame"></span><input type="checkbox" id="libGroup" checked></label>
       </div>
+      <div class="toolbar lib-keep">
+        <span class="muted small" id="libSize"></span>
+        <span class="spacer"></span>
+        <label class="muted small" for="libKeep" data-i18n="keepFor"></label>
+        <select id="libKeep" data-i18n-title="keepHint">
+          <option value="0" data-i18n="keepForever"></option>
+          <option value="7" data-i18n="keep7"></option>
+          <option value="30" data-i18n="keep30"></option>
+          <option value="90" data-i18n="keep90"></option>
+          <option value="365" data-i18n="keep365"></option>
+        </select>
+      </div>
       <div class="panel">
         <div class="lib-bulk" id="libBulk" hidden>
           <label><input type="checkbox" class="lib-check" id="libAll"><span data-i18n="selectAll"></span></label>
@@ -521,6 +538,7 @@
           <div id="jobText" class="muted"></div>
           <div class="row">
             <button type="button" class="btn" id="jobCancel" data-i18n="stop"></button>
+            <button type="button" class="btn primary" id="jobResume" data-i18n="resume" hidden></button>
             <a id="jobZip" class="btn" hidden><svg><use href="#i-download"/></svg><span data-i18n="zip"></span></a>
           </div>
         </div>
@@ -799,6 +817,14 @@ const STR = {
     cachedPlayed: "This text was read before with the same settings, so it played from the library.",
     noServer: "The server didn't respond. Make sure server.py is running.", serverError: "The server returned error {code}",
     cutOff: "The connection dropped before the reading finished.",
+    tooLongAsDoc: "This text is {n} characters, and the Read page takes up to 5,000. Read it as a long document instead? It is read in the background, part by part, into the library.",
+    tooLongCompare: "Comparing engines takes up to 5,000 characters.",
+    resume: "Continue", "state.interrupted": "interrupted by a restart",
+    keepFor: "Keep readings", keepHint: "Older readings are deleted by themselves. Pinned readings are always kept",
+    keepForever: "forever", keep7: "for 7 days", keep30: "for 30 days", keep90: "for 90 days", keep365: "for a year",
+    keepConfirm: "This deletes {n} readings older than {days} days now, and others when they reach that age. Pinned readings are kept. Continue?",
+    keepSaved: "Saved.", keepDeleted: "Saved. {n} old readings were deleted.",
+    libSize: "{n} readings, {size} on disk", pin: "Pin: keep this reading", unpin: "Unpin",
     needTextCompare: "Type some text to compare.", comparing: "Comparing: {i} of {n}, {engine}…",
     compareDone: "Comparison ready: {n} engines. Each reading is in the library.", compareFailed: "Failed:", compareNone: "No engine could read it.",
     nothingYet: "Nothing played yet", nothingSub: "Write text and press Read aloud",
@@ -1002,6 +1028,14 @@ const STR = {
     cachedPlayed: "הטקסט הזה כבר הוקרא באותן הגדרות, והושמע מהספרייה.",
     noServer: "השרת לא הגיב. ודאו ש-server.py רץ.", serverError: "השרת החזיר שגיאה {code}",
     cutOff: "החיבור לשרת נקטע לפני שההקראה הסתיימה.",
+    tooLongAsDoc: "בטקסט יש {n} תווים, ודף ההקראה מקבל עד 5,000. להקריא אותו כמסמך ארוך? הוא מוקרא ברקע, חלק אחרי חלק, אל הספרייה.",
+    tooLongCompare: "השוואת מנועים מקבלת עד 5,000 תווים.",
+    resume: "המשך", "state.interrupted": "נקטע בהפעלה מחדש",
+    keepFor: "שמירת הקראות", keepHint: "הקראות ישנות יותר נמחקות מעצמן. הקראות נעוצות נשמרות תמיד",
+    keepForever: "לתמיד", keep7: "7 ימים", keep30: "30 ימים", keep90: "90 ימים", keep365: "שנה",
+    keepConfirm: "הפעולה מוחקת עכשיו {n} הקראות שגילן מעל {days} ימים, ואחרות כשיגיעו לגיל הזה. הקראות נעוצות נשמרות. להמשיך?",
+    keepSaved: "נשמר.", keepDeleted: "נשמר. נמחקו {n} הקראות ישנות.",
+    libSize: "{n} הקראות, {size} בדיסק", pin: "נעיצה: לשמור את ההקראה", unpin: "ביטול נעיצה",
     needTextCompare: "כתבו טקסט כדי להשוות.", comparing: "משווה: {i} מתוך {n}, {engine}…",
     compareDone: "ההשוואה מוכנה: {n} מנועים. כל הקראה נמצאת בספרייה.", compareFailed: "נכשלו:", compareNone: "אף מנוע לא הצליח לקרוא.",
     nothingYet: "עוד לא הושמע כלום", nothingSub: "כתבו טקסט ולחצו על הקרא",
@@ -1169,7 +1203,7 @@ function applyLanguage() {
   // Everything built from data gets rebuilt in the new language.
   renderHealth(); renderGpu(); renderEngineInfo(); updateCount(); renderPresets(presets, $("preset").value);
   if (voices.length) renderVoices(voices); else renderVoiceList();
-  renderHistory(); renderLexicon(lexicon); renderStatus(); renderZonos(); renderJob(); renderClips(); updateDocUses(); renderSttSettings(); renderTranscribe();
+  renderHistory(); renderLibrarySettings(); renderLexicon(lexicon); renderStatus(); renderZonos(); renderJob(); renderClips(); updateDocUses(); renderSttSettings(); renderTranscribe();
   if (current) { renderSentences(current.meta); updateNow(); }
   else updateNow();
   if (!niqqudEl.hidden) { niqqudFor = null; showNiqqud(true); }
@@ -1267,7 +1301,7 @@ function renderStatus() {
       <div class="progress"><div style="width:${Math.round(100 * s.gpu.used_gb / s.gpu.total_gb)}%"></div></div><div class="muted small" style="margin-top:6px">${esc(s.gpu.name)}</div></div>` : "";
   $("backupLibraryLabel").textContent = t("backupLibrary", { n: s.library_items });
   box.innerHTML = `<div class="stat-grid">${gpu}
-      <div class="panel stat"><div class="label">${t("libraryStat")}</div><div class="value">${t("readings", { n: s.library_items })}</div></div>
+      <div class="panel stat"><div class="label">${t("libraryStat")}</div><div class="value">${t("readings", { n: s.library_items })}${s.library_bytes ? ` · ${sizeText(s.library_bytes)}` : ""}</div></div>
       <div class="panel stat"><div class="label">${t("jobsStat")}</div><div class="value">${s.jobs_running}</div></div>
       <div class="panel stat"><div class="label">${t("accessStat")}</div><div class="value" style="font-size:14px;font-weight:500">${s.auth ? t("accessKey") : t("accessOpen")}</div></div>
     </div>
@@ -1728,8 +1762,10 @@ function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp
 
 // ---------- Text ----------
 textEl.value = storage.get("kol-draft") ?? "שלום! זהו שרת הקראה שרץ על המחשב שלך. כתבו כל טקסט בעברית, ולחצו על הקרא.";
+const MAX_READ = 5000;  // the Read page's limit (the server's too); longer text goes to Long documents
 function updateCount() {
-  $("count").textContent = `${textEl.value.length.toLocaleString("en")} / 5,000`;
+  $("count").textContent = `${textEl.value.length.toLocaleString("en")} / ${MAX_READ.toLocaleString("en")}`;
+  $("count").classList.toggle("over", textEl.value.length > MAX_READ);
 }
 textEl.addEventListener("input", () => { updateCount(); updateArabicHint(); storage.set("kol-draft", textEl.value); });
 
@@ -2425,6 +2461,7 @@ async function speak() {
   const text = textEl.value.trim();
   if (!text) { setStatus(t("needText"), true); go("read"); textEl.focus(); return; }
   if (busyNow) return;
+  if (text.length > MAX_READ) { readAsDocument(text); return; }
   setBusy(true);
   const signal = (speakAbort = new AbortController()).signal;
   showStop(true);
@@ -2498,6 +2535,7 @@ $("compareClear").addEventListener("click", () => { storage.set("kol-compare", "
 async function compareEngines() {
   const text = textEl.value.trim();
   if (!text) { setStatus(t("needTextCompare"), true); textEl.focus(); return; }
+  if (text.length > MAX_READ) { setStatus(t("tooLongCompare"), true); return; }
   const name = selectedVoice().name;
   const picks = compareChosen().map(engine =>
     voices.find(v => v.engine === engine && v.name === name) || voices.find(v => v.engine === engine)).filter(Boolean);
@@ -2763,7 +2801,39 @@ async function deleteSelected() {
 async function refreshLibrary() {
   try { libraryItems = await (await api("/library")).json(); } catch { return; }
   renderHistory();
+  loadLibrarySettings();
 }
+const sizeText = bytes => bytes >= 2 ** 30 ? `${(bytes / 2 ** 30).toFixed(1)} GB` : `${Math.max(Math.round(bytes / 2 ** 20), bytes ? 1 : 0)} MB`;
+let librarySettings = null;
+function renderLibrarySettings() {
+  if (!librarySettings) return;
+  $("libSize").textContent = t("libSize", { n: librarySettings.items, size: sizeText(librarySettings.bytes) });
+  $("libKeep").value = String(librarySettings.keep_days);
+  if ($("libKeep").value !== String(librarySettings.keep_days)) {  // a number of days set through the API
+    $("libKeep").add(new Option(`${librarySettings.keep_days}`, String(librarySettings.keep_days)));
+    $("libKeep").value = String(librarySettings.keep_days);
+  }
+}
+async function loadLibrarySettings() {
+  try { librarySettings = await (await api("/settings/library")).json(); } catch { return; }
+  renderLibrarySettings();
+}
+$("libKeep").addEventListener("change", async () => {
+  const days = Number($("libKeep").value);
+  try {
+    if (days) {
+      const preview = await (await api(`/settings/library?preview_days=${days}`)).json();
+      if (preview.would_delete && !confirm(t("keepConfirm", { n: preview.would_delete, days }))) { renderLibrarySettings(); return; }
+    }
+    const r = await postJSON("/settings/library", { keep_days: days }, "PUT");
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || t("serverError", { code: r.status }));
+    setStatus(data.deleted ? t("keepDeleted", { n: data.deleted }) : t("keepSaved"));
+    if (data.deleted && current && !libraryItems.some(i => i.id === current.meta.id)) clearPlayer();
+    await refreshLibrary();
+    if (current && !libraryItems.some(i => i.id === current.meta.id)) clearPlayer();
+  } catch (e) { setStatus(errorText(e), true); renderLibrarySettings(); }
+});
 // Engine and voice filters list only what the library holds; "voice" ids are "engine/name".
 const libEngineOf = id => (id || "").split("/")[0];
 function renderLibFilters() {
@@ -2818,6 +2888,7 @@ function libRow(item, items, { key = null, group = [item], open = false, version
   li.innerHTML = `<input type="checkbox" class="lib-check"><button type="button" class="btn icon-btn play-sm"><svg><use href="#i-play"/></svg></button>
     <div class="grow"><div class="snippet" dir="auto"></div>
       <div class="sub">${kind ? `<span class="tag accent">${t(kind)}</span>` : ""}${escapeHtml(voiceText(item.voice))} · ${secs(item.audio_seconds || 0)} · ${t("sentenceCount", { n: item.sentences ?? 0 })} · ${item.created ? dateFmt.format(item.created * 1000) : ""}</div></div>
+    <button type="button" class="btn icon-btn pin actions-wide" aria-pressed="${!!item.pinned}"><svg><use href="#i-pin"/></svg></button>
     <a class="btn icon-btn actions-wide"><svg><use href="#i-download"/></svg></a>
     <button type="button" class="btn icon-btn danger"><svg><use href="#i-trash"/></svg></button>`;
   li.querySelector(".snippet").textContent = item.kind === "chapter" ? item.title : item.text;
@@ -2845,6 +2916,15 @@ function libRow(item, items, { key = null, group = [item], open = false, version
   dl.href = withKey(`/library/${item.id}/audio?format=${format()}`);
   dl.setAttribute("aria-label", t("download"));
   del.setAttribute("aria-label", t("deleteItem"));
+  const pin = li.querySelector("button.pin");
+  pin.title = t(item.pinned ? "unpin" : "pin");
+  pin.setAttribute("aria-label", pin.title);
+  pin.addEventListener("click", async () => {
+    const r = await postJSON(`/library/${item.id}/pin`, { pinned: !item.pinned }, "PUT");
+    if (!r.ok) { setStatus(t("serverError", { code: r.status }), true); return; }
+    item.pinned = !item.pinned;
+    renderHistory();
+  });
   del.addEventListener("click", async () => {
     if (!confirm(t("deleteItemConfirm"))) return;
     await api(`/library/${item.id}`, { method: "DELETE" });
@@ -2889,20 +2969,30 @@ $("docFile").addEventListener("change", () => {
   $("docName").textContent = f ? f.name : t("docPick");
   $("docName").dir = "auto";
 });
-$("docStart").addEventListener("click", async () => {
-  const file = $("docFile").files[0];
-  if (!file) { setStatus(t("docNeedFile"), true); return; }
+async function startDocument(file, name) {
   const body = new FormData();
-  body.append("file", file);
+  body.append("file", file, name || file.name);
   const s = currentSettings();
   body.append("settings", JSON.stringify({
     voice: s.voice, speed: s.speed, normalize: s.normalize, options: s.options, sentence_pause: s.sentencePause,
   }));
   const r = await api("/documents", { method: "POST", body });
   const data = await r.json();
-  if (!r.ok) { setStatus(data.detail || t("docStartFailed"), true); return; }
+  if (!r.ok) { setStatus(data.detail || t("docStartFailed"), true); return false; }
   watchJob(data.id);
+  return true;
+}
+$("docStart").addEventListener("click", () => {
+  const file = $("docFile").files[0];
+  if (!file) { setStatus(t("docNeedFile"), true); return; }
+  startDocument(file);
 });
+// Text too long for the Read page: offered as a long document, named after its first line.
+async function readAsDocument(text) {
+  if (!confirm(t("tooLongAsDoc", { n: text.length.toLocaleString("en") }))) return;
+  const title = (text.split(/\r?\n/)[0] || "").replace(/[\\/:*?"<>|#]/g, "").trim().slice(0, 40) || "text";
+  if (await startDocument(new Blob([text], { type: "text/plain" }), `${title}.txt`)) go("documents");
+}
 function renderJob() {
   if (!job) return;
   $("job").hidden = false;
@@ -2911,6 +3001,7 @@ function renderJob() {
   const state = t("state." + job.status, { err: job.error || "" });
   $("jobText").textContent = t("jobLine", { title: job.title, done: job.done, total: job.total, state, where });
   $("jobCancel").hidden = job.status !== "running";
+  $("jobResume").hidden = !(["failed", "cancelled", "interrupted"].includes(job.status) && job.done < job.total);
   $("jobZip").hidden = !job.done;
   if (job.done) $("jobZip").href = withKey(`/documents/${job.id}/zip?format=mp3`);
 }
@@ -2925,9 +3016,20 @@ function watchJob(id) {
     if (job.status !== "running") clearInterval(jobTimer);
   };
   $("jobCancel").onclick = () => api(`/jobs/${id}/cancel`, { method: "POST" }).then(poll);
+  $("jobResume").onclick = async () => {
+    const r = await api(`/jobs/${id}/resume`, { method: "POST" });
+    if (!r.ok) { setStatus((await r.json().catch(() => ({}))).detail || t("docStartFailed"), true); return; }
+    watchJob(id);
+  };
   poll();
   jobTimer = setInterval(poll, 2000);
 }
+// The job in progress (else the latest one) is shown again after a reload or on another device:
+// its progress, Stop or Continue, and the ZIP link.
+api("/jobs").then(r => r.json()).then(list => {
+  const latest = list.find(j => j.status === "running") || list[0];
+  if (latest) watchJob(latest.id);
+}).catch(() => {});
 
 // ---------- Voice clips: uploaded or recorded, each one can be played, trimmed and leveled ----------
 // Edits happen in the browser; what gets checked and saved is the trimmed selection as WAV.

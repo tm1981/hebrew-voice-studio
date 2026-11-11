@@ -6,8 +6,15 @@ outputs/library/<id>/
                  "group", "sample_rate", "items": [...], "audio_seconds", "generation_seconds"}
     s<N>.wav    one per speech item; "items" lists speech {"kind", "text", "voice", "file",
                 "seconds"} and pause {"kind": "pause", "seconds"} entries in reading order
-    full.wav    the whole reading, rebuilt whenever an item changes
+    full.flac   the whole reading, rebuilt whenever an item changes (lossless, about half the size
+                of the WAV it used to be; readings saved before that keep their full.wav)
+
+The list of readings is kept in memory (Library.index): the page and /status ask for it often, and
+reading every meta.json each time got slower with every reading saved. A reading can be pinned;
+prune() deletes unpinned readings older than a number of days.
 """
+from __future__ import annotations  # the class has a method called list
+
 import hashlib
 import json
 import shutil
@@ -47,10 +54,28 @@ class Library:
         self.reindex()
 
     def reindex(self) -> None:
-        """Reads which readings are cached again, e.g. after a backup was restored into the folder."""
-        by_key = {meta["cache_key"]: meta["id"] for meta in self._all_meta() if meta.get("cache_key")}
+        """Reads the folder again, e.g. after a backup was restored into it: the list of readings
+        and which ones are cached. An entry missing what the list needs is left out, not fatal."""
+        index, by_key = {}, {}
+        for meta in self._all_meta():
+            try:
+                index[meta["id"]] = self._summary(meta)
+            except (KeyError, TypeError):
+                continue
+            if meta.get("cache_key"):
+                by_key[meta["cache_key"]] = meta["id"]
         with self.lock:
-            self.by_key = by_key
+            self.index, self.by_key = index, by_key
+
+    def _summary(self, meta: dict) -> dict:
+        """What the list shows for one reading, with its size on disk."""
+        summary = {k: meta.get(k) for k in (
+            "id", "title", "kind", "text", "voice", "group", "audio_seconds", "generation_seconds")}
+        summary["created"] = float(meta["created"])
+        summary["sentences"] = sum(1 for i in meta["items"] if i["kind"] == "speech")
+        summary["pinned"] = bool(meta.get("pinned"))
+        summary["bytes"] = sum(f.stat().st_size for f in self._dir(meta["id"]).iterdir() if f.is_file())
+        return summary
 
     def _all_meta(self) -> list[dict]:
         metas = []
@@ -74,12 +99,37 @@ class Library:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def list(self) -> list[dict]:
-        summaries = []
-        for m in sorted(self._all_meta(), key=lambda m: m["created"], reverse=True):
-            summaries.append({k: m.get(k) for k in (
-                "id", "created", "title", "kind", "text", "voice", "group", "audio_seconds", "generation_seconds")})
-            summaries[-1]["sentences"] = sum(1 for i in m["items"] if i["kind"] == "speech")
-        return summaries
+        """Newest first."""
+        return sorted((dict(s) for s in list(self.index.values())), key=lambda s: s["created"], reverse=True)
+
+    def size(self) -> int:
+        """Bytes on disk."""
+        return sum(s["bytes"] for s in list(self.index.values()))
+
+    def pin(self, item_id: str, pinned: bool) -> dict:
+        """A pinned reading is never deleted by prune()."""
+        with self.lock:
+            meta = self.get(item_id)
+            meta["pinned"] = bool(pinned)
+            (self._dir(item_id) / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+            self.index[item_id] = self._summary(meta)
+            return meta
+
+    def prunable(self, days: float, now: float | None = None) -> list[str]:
+        """Ids of the unpinned readings made more than `days` days ago."""
+        before = (now or time.time()) - days * 86400
+        return [s["id"] for s in list(self.index.values()) if not s["pinned"] and s["created"] < before]
+
+    def prune(self, days: float, now: float | None = None) -> list[str]:
+        """Deletes them. -> the ids deleted."""
+        deleted = []
+        for item_id in self.prunable(days, now):
+            try:
+                self.delete(item_id)
+                deleted.append(item_id)
+            except (KeyError, OSError):
+                continue
+        return deleted
 
     def find(self, key: str) -> dict | None:
         item_id = self.by_key.get(key)
@@ -96,7 +146,8 @@ class Library:
         return audio, sr
 
     def full_path(self, item_id: str) -> Path:
-        return self._dir(item_id) / "full.wav"
+        flac = self._dir(item_id) / "full.flac"
+        return flac if flac.exists() else self._dir(item_id) / "full.wav"
 
     def save(self, *, title, kind, text, voice, settings, items, generation_seconds, key=None, group=None,
              readalong=None) -> dict:
@@ -151,9 +202,10 @@ class Library:
         if meta.get("cache_key"):
             self.by_key.pop(meta["cache_key"], None)
         shutil.rmtree(self._dir(item_id))
+        self.index.pop(item_id, None)
 
     def _write(self, meta: dict) -> None:
-        """Rebuild full.wav from the items, then write meta.json (last, so a crash mid-way
+        """Rebuild the full file from the items, then write meta.json (last, so a crash mid-way
         leaves the previous meta pointing at files that still exist)."""
         folder = self._dir(meta["id"])
         rate = meta["sample_rate"]
@@ -169,17 +221,19 @@ class Library:
             if previous_speech:
                 parts.append(gap)
                 at += len(gap)
-            item["start"] = round(at / rate, 3)  # where it starts in full.wav, for marking it as it plays
+            item["start"] = round(at / rate, 3)  # where it starts in the full file, for marking it as it plays
             parts.append(sf.read(folder / item["file"], dtype="float32")[0])
             at += len(parts[-1])
             previous_speech = True
         full = np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
-        sf.write(folder / "full.wav", full, rate, subtype="PCM_16")
+        sf.write(folder / "full.flac", full, rate, format="FLAC", subtype="PCM_16")
+        (folder / "full.wav").unlink(missing_ok=True)  # a reading saved before full files were FLAC
         meta["audio_seconds"] = round(len(full) / rate, 2)
         for stale in folder.glob("s*.wav"):
             if stale.name not in {i.get("file") for i in meta["items"]}:
                 stale.unlink()
         (folder / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        self.index[meta["id"]] = self._summary(meta)
 
 
 class MemoryCache:

@@ -237,7 +237,7 @@ API_KEY = load_api_key()  # replaced when the key is changed from the web UI (se
 dictionary = Dictionary()
 library = Library()
 api_cache = MemoryCache()
-jobs = Jobs()
+jobs = Jobs(DATA_DIR / "jobs.json")  # its reader is set below, with the reading pipeline
 PRESETS_FILE = DATA_DIR / "presets.json"
 SETTINGS_FILE = DATA_DIR / "settings.json"  # settings changed from the web UI
 
@@ -953,6 +953,18 @@ def library_delete(item_id: str):
     return {"ok": True}
 
 
+class PinRequest(BaseModel):
+    pinned: bool
+
+
+@app.put("/library/{item_id}/pin")
+def library_pin(item_id: str, body: PinRequest):
+    """A pinned reading is kept when old readings are deleted (keep readings for N days)."""
+    library_meta(item_id)
+    library.pin(item_id, body.pinned)
+    return {"ok": True, "pinned": body.pinned}
+
+
 # --- Presets: named settings, shared by every browser that uses this server
 
 class Preset(BaseModel):
@@ -1149,6 +1161,52 @@ def auto_unload_loop() -> None:
 threading.Thread(target=auto_unload_loop, daemon=True, name="auto-unload").start()
 
 
+# --- Old readings: every reading is saved, so the library only grows. With "keep_days" set,
+# unpinned readings older than that are deleted, now and every hour. 0 keeps everything (the default).
+
+class LibrarySettings(BaseModel):
+    keep_days: int = Field(..., ge=0, le=3650)
+
+
+library_keep = {"days": int(load_settings().get("library_keep_days", 0))}
+
+
+def library_summary() -> dict:
+    return {"keep_days": library_keep["days"], "items": len(library.index), "bytes": library.size()}
+
+
+@app.get("/settings/library")
+def library_settings(preview_days: int = Query(0, ge=0, le=3650)):
+    """preview_days: also says how many readings that setting would delete right now."""
+    out = library_summary()
+    if preview_days:
+        out["would_delete"] = len(library.prunable(preview_days))
+    return out
+
+
+@app.put("/settings/library")
+def library_settings_set(body: LibrarySettings):
+    library_keep["days"] = body.keep_days
+    save_settings(library_keep_days=body.keep_days)
+    deleted = library.prune(body.keep_days) if body.keep_days else []
+    return {**library_summary(), "deleted": len(deleted)}
+
+
+def library_prune_loop() -> None:
+    while True:
+        if library_keep["days"]:
+            try:
+                deleted = library.prune(library_keep["days"])
+                if deleted:
+                    print(f"[library] deleted {len(deleted)} readings older than {library_keep['days']} days", flush=True)
+            except Exception as e:
+                print(f"[WARN] couldn't delete old readings: {e}")
+        time.sleep(3600)
+
+
+threading.Thread(target=library_prune_loop, daemon=True, name="library-prune").start()
+
+
 # GPU memory each engine needs, measured ("gpu_gb" in engine_info.json), so room can be made
 # before one loads instead of it failing half-way (gpu_room.py).
 GPU_GB = {name: info["gpu_gb"] for name, info in json.loads((ROOT / "engine_info.json").read_text(encoding="utf-8")).items()
@@ -1294,26 +1352,38 @@ def documents_start(file: UploadFile = File(...), settings: str = Form("{}")):
         raise HTTPException(400, "No text found in that file (a scanned PDF has none to extract).")
     if len(text) > MAX_DOCUMENT_CHARS:
         raise HTTPException(400, f"That document is too long ({len(text):,} characters; the limit is {MAX_DOCUMENT_CHARS:,}).")
-    base = TTSRequest(text="x", **json.loads(settings))
+    try:
+        chosen = json.loads(settings)
+        base = TTSRequest(text="x", **chosen)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, f"Bad settings: {e}")
     resolve_voice(base.voice)
-    title = os.path.splitext(file.filename or "document")[0]
+    return jobs.start(os.path.splitext(file.filename or "document")[0], split_chapters(text), chosen)
 
-    def read_chapter(chapter_title: str, chapter_text: str, group: str) -> dict:
-        req = base.model_copy(update={"text": chapter_text})
-        t0 = time.perf_counter()
-        results, items = [], plan(req)
-        for item in items:
-            if item[0] == "pause":
-                results.append({"kind": "pause", "seconds": item[1]})
-            else:
-                audio, rate = speak_item(item, req)
-                results.append({"kind": "speech", "voice": item[1], "text": item[2], "audio": audio, "sample_rate": rate,
-                                "words": time_words(req, audio, rate, item[2])})
-        return library.save(title=f"{title}: {chapter_title}", kind="chapter", text=chapter_text, voice=req.voice,
-                            settings=req.settings(), items=results, generation_seconds=time.perf_counter() - t0,
-                            group=group, readalong=readalong(req, items))
 
-    return jobs.start(title, split_chapters(text), read_chapter)
+def read_chapter(title: str, settings: dict, chapter_title: str, chapter_text: str, group: str) -> dict:
+    """One chapter of a document job into the library, with the settings the job started with
+    (kept in the job, so it can go on after a restart)."""
+    req = TTSRequest(text=chapter_text, **settings)
+    try:
+        resolve_voice(req.voice)
+    except HTTPException as e:
+        raise RuntimeError(e.detail)
+    t0 = time.perf_counter()
+    results, items = [], plan(req)
+    for item in items:
+        if item[0] == "pause":
+            results.append({"kind": "pause", "seconds": item[1]})
+        else:
+            audio, rate = speak_item(item, req)
+            results.append({"kind": "speech", "voice": item[1], "text": item[2], "audio": audio, "sample_rate": rate,
+                            "words": time_words(req, audio, rate, item[2])})
+    return library.save(title=f"{title}: {chapter_title}", kind="chapter", text=chapter_text, voice=req.voice,
+                        settings=req.settings(), items=results, generation_seconds=time.perf_counter() - t0,
+                        group=group, readalong=readalong(req, items))
+
+
+jobs.read = read_chapter
 
 
 @app.get("/jobs")
@@ -1333,6 +1403,17 @@ def jobs_cancel(job_id: str):
     if job_id not in jobs.jobs:
         raise HTTPException(404, "No such job.")
     return jobs.cancel(job_id)
+
+
+@app.post("/jobs/{job_id}/resume")
+def jobs_resume(job_id: str):
+    """Goes on with a stopped, failed or interrupted job from the first chapter not read yet."""
+    if job_id not in jobs.jobs:
+        raise HTTPException(404, "No such job.")
+    try:
+        return jobs.resume(job_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
 
 
 @app.get("/documents/{group}/zip")
@@ -1432,7 +1513,7 @@ def status():
                      "waiting_seconds": since(getattr(e, "load_waiting", None)) if gpu else None,
                      "load_error": getattr(e, "load_error", None) if gpu and not loaded else None})
     return {
-        "engines": rows, "gpu": gpu_summary(), "library_items": len(library.list()), "memory_cache": len(api_cache.items),
+        "engines": rows, "gpu": gpu_summary(), "library_items": len(library.index), "library_bytes": library.size(), "memory_cache": len(api_cache.items),
         "jobs_running": sum(1 for j in jobs.jobs.values() if j["status"] == "running"),
         "auth": bool(API_KEY), "auto_unload_minutes": auto_unload["minutes"],
         "wyoming_port": args.wyoming_port or None,

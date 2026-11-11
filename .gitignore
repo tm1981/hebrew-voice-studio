@@ -23,3 +23,5 @@ __pycache__/
 *.pyc
 *.log
 .superpowers/
+jobs.json
+jobs.tmp
