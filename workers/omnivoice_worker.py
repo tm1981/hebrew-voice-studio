@@ -26,6 +26,7 @@ DESIGNED_VOICES = {
 PROMPT_VERSION = 3  # cached prompts from before (OmniVoice's own cut and transcript) are rebuilt
 REF_MAX_SECONDS = 12.0  # OmniVoice recommends 3-10s; cut at the end of the last phrase before this
 REF_TAIL_SECONDS = 0.2  # kept after the phrase's last word
+MODEL_REVISION = "c5fdb5ccb189668d56333f77ba2629f4cd7535f4"  # a fixed version: a repository's latest one can change under the app (see zonos3_worker.py)
 ASR_MODEL, ASR_REVISION = "ivrit-ai/whisper-large-v3-turbo", "f33172a8c3c6efbc040a7200e00835257cac0447"  # as stt.py
 # OmniVoice scales a clone down to its recording's loudness when that is below 0.1 RMS (0.1
 # turns that off), and its own level is still quieter than the other engines: one home
@@ -47,7 +48,7 @@ class OmniVoiceBackend:
         from omnivoice import OmniVoice
 
         print("Loading OmniVoice...", flush=True)
-        self.model = OmniVoice.from_pretrained("k2-fsa/OmniVoice", device_map="cuda:0", dtype=torch.float16)
+        self.model = OmniVoice.from_pretrained("k2-fsa/OmniVoice", revision=MODEL_REVISION, device_map="cuda:0", dtype=torch.float16)
         self.voices.update(DESIGNED_VOICES)
         self.synthesize("שלום, מה שלומך היום?", "female", 1.0)  # warm-up
 

@@ -352,6 +352,11 @@ class OnDemand:
         return True
 
 
+CHATTERBOX_REPO, CHATTERBOX_REVISION = "ResembleAI/chatterbox", "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18"
+CHATTERBOX_FILES = ["ve.pt", "t3_mtl23ls_v2.safetensors", "s3gen.pt", "grapheme_mtl_merged_expanded_v1.json", "conds.pt",
+                    "Cangjie5_TC.json"]
+
+
 class ChatterboxEngine(OnDemand):
     name = "chatterbox"
     label = "Chatterbox"
@@ -386,7 +391,12 @@ class ChatterboxEngine(OnDemand):
         from chatterbox_fixes import enable_speed_control, guard_speech_tokens, optimize_t3
 
         print(f"Loading Chatterbox Multilingual on {self.device}...")
-        self.model = ChatterboxMultilingualTTS.from_pretrained(device=self.device)
+        # The library's own from_pretrained() asks for the repository's latest version; this is the
+        # same download at the version the app was tested with (the multilingual V2 files).
+        from huggingface_hub import snapshot_download
+
+        files = snapshot_download(CHATTERBOX_REPO, revision=CHATTERBOX_REVISION, allow_patterns=CHATTERBOX_FILES)
+        self.model = ChatterboxMultilingualTTS.from_local(files, self.device)
         guard_speech_tokens(self.model)
         chatterbox_fast.install(self.model.t3)  # before optimize_t3, which wraps it
         optimize_t3(self.model)
@@ -1039,9 +1049,9 @@ class RemoteEngine(OnDemand):
             self.last_used = time.monotonic()
         audio = join_with_pauses(parts, self.sample_rate)
         if speed != 1.0 and not self.native_speed:
-            import librosa
+            from speed import change_speed
 
-            audio = librosa.effects.time_stretch(audio, rate=speed)
+            audio = change_speed(audio, self.sample_rate, speed)
         return audio
 
 
@@ -1129,9 +1139,9 @@ class ZonosEngine:
                     raise RuntimeError(f"Zonos: {e}") from e
         audio = join_with_pauses(parts, self.sample_rate)
         if speed != 1.0:
-            import librosa
+            from speed import change_speed
 
-            audio = librosa.effects.time_stretch(audio, rate=speed**0.5)
+            audio = change_speed(audio, self.sample_rate, speed**0.5)
         return audio
 
 

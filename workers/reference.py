@@ -27,7 +27,8 @@ def _words(audio: np.ndarray, sample_rate: int) -> list:
     # Ming has to stay on transformers 4.46, which only knows the old name; 5.x only the new one
     version = tuple(int(n) for n in transformers.__version__.split(".")[:2])
     half = {"dtype" if version >= (4, 56) else "torch_dtype": torch.float16}
-    asr = pipeline("automatic-speech-recognition", "openai/whisper-large-v3-turbo", device="cuda", **half)
+    asr = pipeline("automatic-speech-recognition", "openai/whisper-large-v3-turbo",
+                   revision="41f01f3fe87f28c78e2fbf8b568835947dd65ed9", device="cuda", **half)  # a fixed version
     chunks = asr({"raw": audio, "sampling_rate": sample_rate}, return_timestamps="word",
                  generate_kwargs={"task": "transcribe"})["chunks"]
     del asr

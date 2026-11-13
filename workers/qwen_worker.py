@@ -20,8 +20,9 @@ from worker_common import serve
 FAST = True  # qwen_fast's CUDA-graph decode loop instead of HF generate (~20x faster)
 
 ROOT = Path(__file__).resolve().parent.parent
-BASE = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
-ADAPTER = "notmax123/QwenTTS-he-1.7B"
+# a fixed version: a repository's latest one can change under the app (see zonos3_worker.py)
+BASE, BASE_REVISION = "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "fd4b254389122332181a7c3db7f27e918eec64e3"
+ADAPTER, ADAPTER_REVISION = "notmax123/QwenTTS-he-1.7B", "83edd2defecc351ab1c60f764c17c2d012d2d9ca"
 sys.path.insert(0, str(ROOT))
 from model_files import ensure as ensure_model  # noqa: E402
 
@@ -53,9 +54,9 @@ class QwenBackend:
         # Local folders, not repo ids: given an id, transformers 4.57 asks the Hub about it even
         # when the files are cached, and fails offline.
         self.tts = Qwen3TTSModel.from_pretrained(
-            snapshot_download(BASE), device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa"
+            snapshot_download(BASE, revision=BASE_REVISION), device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa"
         )
-        talker = PeftModel.from_pretrained(self.tts.model.talker, snapshot_download(ADAPTER))
+        talker = PeftModel.from_pretrained(self.tts.model.talker, snapshot_download(ADAPTER, revision=ADAPTER_REVISION))
         # Merged in memory (the files stay as they are): 1.65x faster on the 5090 (0.30x -> 0.50x
         # real time). The adapter card advises against merging only to keep the base model's
         # other languages, which this Hebrew engine doesn't use.
@@ -66,7 +67,7 @@ class QwenBackend:
 
             qwen_fast.install(self.tts.model).capture()
         for name, file in SAMPLE_VOICES.items():
-            self.voices[name] = self._prompt(hf_hub_download(ADAPTER, file))
+            self.voices[name] = self._prompt(hf_hub_download(ADAPTER, file, revision=ADAPTER_REVISION))
         self.synthesize("שלום, מה שלומך היום?", "female", 1.0)  # warm-up
 
     def _prompt(self, path: str):

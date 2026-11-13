@@ -29,8 +29,9 @@ from huggingface_hub import snapshot_download
 from worker_common import serve
 
 ROOT = Path(__file__).resolve().parent.parent
-MODEL = "notmax123/magpie_tts_multilingual_357m-he"
-CODEC = "nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps"
+# a fixed version: a repository's latest one can change under the app (see zonos3_worker.py)
+MODEL, REVISION = "notmax123/magpie_tts_multilingual_357m-he", "d0c5e96fdc167e3f2286e9ce5813b3c795f0b53a"
+CODEC, CODEC_REVISION = "nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps", "fc00890b604aa2de298d2641ffc6c5f6caf8c4d7"
 sys.path.insert(0, str(ROOT))
 from model_files import ensure as ensure_model  # noqa: E402
 
@@ -55,8 +56,8 @@ class MagpieBackend:
         print("Loading Magpie-TTS Hebrew...", flush=True)
         LANGUAGE_TOKENIZER_MAP["he"] = ["hebrew_chartokenizer"]
         self.g2p = G2P(str(ensure_model("renikud-plus", RENIKUD)), niqqud="use")
-        model_dir = Path(snapshot_download(MODEL))
-        codec = next(Path(snapshot_download(CODEC)).glob("*.nemo"))
+        model_dir = Path(snapshot_download(MODEL, revision=REVISION))
+        codec = next(Path(snapshot_download(CODEC, revision=CODEC_REVISION)).glob("*.nemo"))
         # hparams.yaml names its tokenizer files as "assets/...", which NeMo would resolve
         # against the working directory; written out with absolute paths to models/magpie/.
         hparams = ROOT / "models" / "magpie" / "hparams.yaml"

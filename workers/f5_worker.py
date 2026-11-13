@@ -37,7 +37,8 @@ sys.path.insert(0, str(ROOT))
 from model_files import ensure as ensure_model  # noqa: E402
 from niqqud import diacritize_respecting_typed  # noqa: E402
 
-MODEL = "Yzamari/f5tts-hebrew-v2"
+MODEL, REVISION = "Yzamari/f5tts-hebrew-v2", "d6f8a458923b9811d55571d628d41a4828168f77"  # a fixed version: a repository's latest one can change under the app (see zonos3_worker.py)
+ASR_MODEL, ASR_REVISION = "openai/whisper-large-v3-turbo", "41f01f3fe87f28c78e2fbf8b568835947dd65ed9"
 BASE_MODEL = ("SWivid/F5-TTS", "F5TTS_v1_Base/model_1250000.safetensors", "84e5a410d9cead4de2f847e7c9369a6440bdfaca")
 REF_TAIL_SECONDS = 0.3  # silence after the reference clip, see add_voice
 ENGLISH_REF_TAIL_SECONDS = 0.5
@@ -117,7 +118,7 @@ class F5Backend:
 
         print("Loading F5-TTS Hebrew...", flush=True)
         self.phonikud = Phonikud(str(ensure_model("phonikud", "kokoro-hebrew/phonikud-1.0.int8.onnx")))
-        weights = Path(snapshot_download(MODEL))
+        weights = Path(snapshot_download(MODEL, revision=REVISION))
         cfg = OmegaConf.load(str(files("f5_tts").joinpath("configs/F5TTS_v1_Base.yaml")))
         # vocab_file sets the text embedding size to this vocabulary (the card's "override text_num_embeds")
         self.model = load_model(DiT, OmegaConf.to_container(cfg.model.arch), str(weights / "model.safetensors"),
@@ -196,7 +197,7 @@ class F5Backend:
 
         from transformers import pipeline
 
-        asr = pipeline("automatic-speech-recognition", "openai/whisper-large-v3-turbo",
+        asr = pipeline("automatic-speech-recognition", ASR_MODEL, revision=ASR_REVISION,
                        torch_dtype=torch.float16, device="cuda")
         chunks = asr({"raw": audio, "sampling_rate": sr}, return_timestamps="word",
                      generate_kwargs={"task": "transcribe"})["chunks"]
@@ -214,7 +215,7 @@ class F5Backend:
         from transformers import pipeline
 
         audio, sr = sf.read(str(path), dtype="float32")
-        asr = pipeline("automatic-speech-recognition", "openai/whisper-large-v3-turbo",
+        asr = pipeline("automatic-speech-recognition", ASR_MODEL, revision=ASR_REVISION,
                        torch_dtype=torch.float16, device="cuda")
         text = asr({"raw": audio, "sampling_rate": sr}, generate_kwargs={"language": "he", "task": "transcribe"})["text"]
         del asr

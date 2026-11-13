@@ -24,6 +24,8 @@ from engines import OnDemand
 
 DEFAULT_MODEL = "ivrit-ai/whisper-large-v3-turbo"
 DEFAULT_REVISION = "f33172a8c3c6efbc040a7200e00835257cac0447"
+# Fixed versions of the models Settings offers; another model (STT_MODEL) loads its latest version.
+REVISIONS = {DEFAULT_MODEL: DEFAULT_REVISION, "openai/whisper-large-v3-turbo": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9"}
 # The models Settings offers: id -> (languages, as told to Home Assistant; label).
 BUILTIN_MODELS = {
     DEFAULT_MODEL: (["he"], "Hebrew: ivrit-ai Whisper large-v3 turbo"),
@@ -63,7 +65,7 @@ class SpeechToText(OnDemand):
         with self.lock:
             self.unload()
             self.model_id = model
-            self.revision = DEFAULT_REVISION if model == DEFAULT_MODEL else None
+            self.revision = REVISIONS.get(model)
 
     @property
     def languages(self) -> list[str]:
