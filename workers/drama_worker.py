@@ -97,7 +97,27 @@ def ensure_weights() -> None:
     env = {**os.environ, "PYTHONPATH": str(COMFY), "PYTHONUTF8": "1"}
     subprocess.run([*convert, "codec", str(source / "codec.pth"), str(CODEC_FILE)], env=env, check=True)
     subprocess.run([*convert, "model", str(source), str(MODEL_FILE), "--format", "w4a8"], env=env, check=True)
-    shutil.rmtree(source.parents[1])  # nothing reads the 41.5 GB original again
+    delete_download(source.parents[1])  # nothing reads the 41.5 GB original again
+
+
+def delete_download(repo: Path) -> None:
+    """Deletes a model's folder in the Hugging Face cache and the files it points to. The cache
+    can keep the actual bytes in a blobs folder shared by all models, outside the model's own
+    folder; deleting only that folder left 38.7 GB of Drama 3's original behind."""
+    targets = set()
+    for f in repo.rglob("*"):
+        try:
+            if not f.is_dir():
+                targets.add(Path(os.path.realpath(f)))
+        except OSError:
+            pass
+    shutil.rmtree(repo, ignore_errors=True)
+    for target in targets:
+        try:
+            os.chmod(target, 0o666)  # blobs are read-only
+            target.unlink()
+        except OSError:
+            pass  # already gone with the folder
 
 
 class DramaBackend:

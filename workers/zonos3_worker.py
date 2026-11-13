@@ -37,6 +37,10 @@ from worker_common import serve
 
 SERVER = Path(os.environ.get("ZONOS3_SERVER", "/opt/zonos3/zonos3-server"))
 REPO = "Zyphra/ZONOS3-Mini"
+# A fixed revision, the one the server in the image was built for and tested with. The repository's
+# latest version renamed these files three days after this engine was added (zonos3-ptq.gguf became
+# backbone-ptq.gguf), and every first load failed with "404 Not Found".
+REVISION = "24f39592cf5521d675d96db41fc379af3ad369be"
 FILES = ["gguf/zonos3-ptq.gguf", "gguf/zac-keep2.gguf", "gguf/spk-encoder.gguf"]  # the server finds the last two beside the first
 RATE, MIN_RATE, MAX_RATE = 18.0, 12.0, 21.0
 
@@ -57,7 +61,7 @@ class Zonos3Backend:
 
     def load(self):
         print("Loading ZONOS3-Mini...", flush=True)
-        model = [hf_hub_download(REPO, f) for f in FILES][0]
+        model = [hf_hub_download(REPO, f, revision=REVISION) for f in FILES][0]
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
             port = s.getsockname()[1]
