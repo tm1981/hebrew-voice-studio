@@ -538,8 +538,9 @@ sits inside a volume. The backup holds the API key, so keep it private. From scr
 | `workers/` | The GPU engines' servers, each run in its own conda env. |
 | `engine_info.json` | What each engine can do, from tests and listening: the page's engine info box. |
 | `text_prep.py`, `niqqud.py`, `script.py` | Hebrew normalization, niqqud handling, pauses and dialogue. |
-| `tests/` | Checks for how text becomes words; run `python -m unittest discover tests`. |
+| `tests/` | Checks for how text becomes words, engine loading and failures, the library and document jobs, and speed; run `python -m unittest discover tests`. |
 | `library.py`, `documents.py` | Saved readings and long-document jobs. |
+| `speed.py`, `gpu_room.py` | Changing a reading's pace without changing its sound; making room on the GPU before an engine loads. |
 | `backup.py`, `wyoming_service.py` | Backup/restore of your data; the Wyoming server for Home Assistant. |
 | `chatterbox_fixes.py` | Fixes that make Chatterbox stable on Hebrew. |
 | `chatterbox_fast.py` | Fast decode loop for Chatterbox: the same tokens as the stock loop, about 6x faster. |
@@ -550,7 +551,7 @@ sits inside a volume. The backup holds the API key, so keep it private. From scr
 | `paths.py`, `model_files.py` | Where data and models live; models downloaded on first use. |
 | `models/`, `vendor/` | Downloaded models and third-party code; `models/hf` is the Hugging Face cache. |
 | `requirements/` | Exact package versions for each env (`*.lock.txt` for Windows, `linux/` for Docker). |
-| `tools/` | Helpers: fetch the third-party code, copy existing Hugging Face models in, download the UI fonts. |
+| `tools/` | Helpers: fetch the third-party code, copy existing Hugging Face models in, download the UI fonts. `tools/container-test/` checks a Docker image before it is published. |
 | `Dockerfile`, `docker/voice/` | The Docker image and its Compose file. |
 | `docker/zonos-hebrew/` | Docker Compose file for Zonos-Hebrew. |
 

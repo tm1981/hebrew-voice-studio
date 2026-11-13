@@ -161,7 +161,7 @@
     "speed": {"en": "About 4× real time", "he": "בערך פי 4 מזמן אמת"},
     "memory": {"en": "About 2.5 GB", "he": "בערך 2.5 GB"},
     "gpu_gb": 3,
-    "tested": {"en": "With the recording as it is: words added or dropped in 5 of 30 sentences. With the recording cleaned first (on in the app): 0 of 10. Its own page says the output is not always stable.", "he": "עם ההקלטה כמות שהיא: מילים נוספו או נשמטו ב־5 מתוך 30 משפטים. עם ניקוי ההקלטה קודם (פועל באפליקציה): 0 מתוך 10. הדף של המודל מציין שהתוצאה לא תמיד יציבה."},
-    "yours": {"en": "Had a background sound before the recording was cleaned.", "he": "היה רעש רקע לפני ניקוי ההקלטה."}
+    "tested": {"en": "Words added or dropped in 18 of 180 sentences with three recorded voices, about 1 in 10, steady over 60 sentences in a row. It used to fall apart after a long reading (11 of 15 wrong); that is fixed. A reading that drags is cut off and read again.", "he": "מילים נוספו או נשמטו ב־18 מתוך 180 משפטים עם שלושה קולות מוקלטים, בערך 1 מכל 10, יציב לאורך 60 משפטים ברצף. בעבר הוא התפרק אחרי הקראה ארוכה (11 מתוך 15 שגויים); זה תוקן. הקראה שנמרחת נקטעת ומוקראת מחדש."},
+    "yours": {"en": "Was slow, stuttered at times and fell apart after a few sentences, before the fix.", "he": "היה איטי, גמגם לפעמים והתפרק אחרי כמה משפטים, לפני התיקון."}
   }
 }

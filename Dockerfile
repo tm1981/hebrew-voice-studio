@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Hebrew Voice Studio: the server (env 'voice') plus the eight GPU worker envs, for a Docker host
+# Hebrew Voice Studio: the server (env 'voice') plus the GPU workers' envs, for a Docker host
 # with an NVIDIA GPU (built for an RTX 3090 / sm_86; the cu128 torch wheels also cover RTX 50xx).
 #
 #   docker build -t hebrew-voice:dev .
@@ -14,11 +14,13 @@
 # and the NVIDIA container runtime mounts the driver (libcuda) into the container. A CUDA base
 # image would only add a second copy of the CUDA libraries.
 #
-# The nine Python envs are uv venvs in /opt/envs/<env>, all on one uv-managed CPython 3.12.16
-# (/opt/python). They are installed in ONE layer with the uv cache inside that layer and
-# --link-mode hardlink, so a wheel shared by several envs (torch 2.9.1+cu128 and its nvidia-*
-# wheels are in seven of them; Drama 3 alone needs torch's cu132 build) is stored once in the
-# image. The cache is deleted at the end of the layer; the hardlinked files stay.
+# The Python envs (one per file in requirements/linux/) are uv venvs in /opt/envs/<env>, all on
+# one uv-managed CPython 3.12.16 (/opt/python). They are installed in ONE layer with the uv cache
+# inside that layer and --link-mode hardlink, so a wheel shared by several envs (torch 2.9.1+cu128
+# and its nvidia-* wheels are in most of them; Drama 3 alone needs torch's cu132 build) is stored
+# once in the image. The cache is deleted at the end of the layer; the hardlinked files stay.
+#
+# Before publishing an image, run it through tools/container-test (see its README).
 
 # ZONOS3-Mini's C++/ggml server, built with CUDA in a throwaway stage (the final image has no
 # CUDA toolkit; at run time the server uses the nvidia-* wheels, see workers/zonos3_worker.py).
