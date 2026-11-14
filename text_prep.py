@@ -210,6 +210,91 @@ class Dictionary:
 _ABBREVIATION_PATTERNS = [(_entry_pattern(w), r) for w, r in sorted(ABBREVIATIONS.items(), key=lambda e: -len(e[0]))]
 
 
+# --- Two corrections to the number library (hebrew_num2words), made here so the library stays as it is.
+#
+# It reads a bare 0-24 after ב/מ/ל as an hour on a 12-hour clock ("ב-8 נפגשנו"), unless the next
+# word is a counted noun, and it only knows plain plurals (...ים, ...ות). "ב-22 מרכזי בקרת טיסה"
+# became "בעשר מרכזי בקרת טיסה": twenty-two read as ten, by every engine. So:
+#   - from 13 up, where the hour reading changes the number, it is kept only where the text says it
+#     is a time ("בשעה 22"); anywhere else the number is read as it is written;
+#   - a construct plural after the number ("22 מרכזי...", "5 חברי...") counts as its noun, masculine.
+_HOUR_WORDS = {"שעה", "השעה", "בשעה", "לשעה", "משעה", "מהשעה", "שעות", "השעות", "בשעות", "שעון", "השעון"}
+# Words ending in י that are not a plural noun in construct state
+_NOT_CONSTRUCT = {"אני", "אחרי", "לפני", "כדי", "בלי", "אולי", "מתי", "שלי", "עלי", "אלי", "אצלי", "בשבילי", "איתי",
+                  "שני", "שלישי", "רביעי", "חמישי", "שישי", "שביעי", "שמיני", "תשיעי", "עשירי", "ראשי", "כללי",
+                  "מדי", "לגבי", "כלפי", "בידי", "לפי", "אפילו", "ואני", "כי", "מי", "די", "חצי", "שתי", "אחי", "אתי", "לי", "בי",
+                  "אחרי", "שלפני", "שאחרי", "ולפני", "ואחרי", "אזי", "כלי", "פרי", "שבי", "רבי"}
+_WORD_EDGES = ".,:;!?\"'()[]-–—"
+_library_integer = num2words.expand_integer
+
+
+def _construct_plural_next(next_words: list[str]) -> bool:
+    word = next_words[0].strip(_WORD_EDGES) if next_words else ""
+    return len(word) >= 3 and word.endswith("י") and word not in _NOT_CONSTRUCT and not re.search(r"[^א-ת]", word)
+
+
+def _expand_integer(body: str, pre: str, prev_words: list[str], next_words: list[str]) -> str:
+    words = _library_integer(body, pre, prev_words, next_words)
+    if not body.isdigit():
+        return words
+    n = int(body)
+    as_hour = 0 <= n <= 24 and words == num2words._hour_word(n)
+    as_bare = words == num2words.cardinal(n, num2words.MASC if n == 1 else num2words.FEM)
+    if not (as_hour or as_bare):
+        return words  # a year, an ordinal, a code, or a number with a noun the library knew
+    if {w.strip(_WORD_EDGES) for w in prev_words[-3:]} & _HOUR_WORDS:
+        # the text says it is a time: both ends of "בין השעות 14 ל-16" the same way
+        return num2words._hour_word(n) if 0 <= n <= 24 else words
+    if _construct_plural_next(next_words):
+        return num2words.cardinal(n, num2words.MASC, construct=n == 2)
+    if as_hour and n >= 13:
+        return num2words.cardinal(n, num2words.FEM)
+    return words
+
+
+num2words.expand_integer = _expand_integer
+# "ב־22": the Hebrew hyphen (maqaf) between a prefix and a number, as the plain one the rules know
+_MAQAF_NUMBER = re.compile(rf"(?<![{HEBREW}])([{PREFIXES}]{{1,3}})־(?=\d)")
+
+
+# --- Latin abbreviations inside Hebrew ("ב-CNN דווח", "סוכני ה-FBI"): engines read them as a word
+# ("קנן", "פבי") or drop them. Written as the letters' Hebrew names, joined with hyphens, both Qwen
+# and Chatterbox said them right; with spaces between the names Chatterbox still stumbled.
+LETTER_NAMES = {"A": "איי", "B": "בי", "C": "סי", "D": "די", "E": "אי", "F": "אף", "G": "ג'י", "H": "אייץ'", "I": "איי",
+                "J": "ג'יי", "K": "קיי", "L": "אל", "M": "אם", "N": "אן", "O": "או", "P": "פי", "Q": "קיו", "R": "אר",
+                "S": "אס", "T": "טי", "U": "יו", "V": "וי", "W": "דאבליו", "X": "אקס", "Y": "וואי", "Z": "זי"}
+# Said as words, not letter by letter
+ACRONYM_WORDS = {"NASA": "נאסא", "NATO": "נאטו", "UNESCO": "אונסקו", "OPEC": "אופק", "FIFA": "פיפא", "IKEA": "איקאה",
+                 "COVID": "קוביד", "LED": "לד", "SIM": "סים", "PIN": "פין", "WAZE": "וייז", "ZOOM": "זום"}
+_ROMAN = re.compile(r"^[IVX]+$")
+# Short words people write in capitals; not abbreviations
+_SHOUTED = {"WOW", "YES", "NO", "HI", "GO", "TOP", "NEW", "THE", "AND", "FOR", "SALE", "FREE", "STOP", "HOT", "BIG"}
+_ACRONYM = re.compile(rf"(?<![A-Za-z0-9.'’-])(?:([{PREFIXES}]{{1,3}})[-־])?((?:[A-Z]\.){{1,5}}[A-Z]?|[A-Z]{{2,6}})(?![A-Za-z0-9'’])")
+_LATIN_WORD_BEFORE = re.compile(r"([A-Za-z][A-Za-z'’.]*)[^A-Za-zא-ת.!?\n]*$")
+_LATIN_WORD_AFTER = re.compile(r"^[^A-Za-zא-ת.!?\n]*([A-Za-z][A-Za-z'’]*)")
+_HEBREW_NEAR = re.compile(rf"[{HEBREW}]")
+
+
+def _expand_acronym(m: re.Match) -> str:
+    prefix, letters = m.group(1) or "", m.group(2).replace(".", "")
+    text = m.string
+    if len(letters) < 2 or letters in _SHOUTED or _ROMAN.match(letters):
+        return m.group(0)  # one letter, a word in capitals, or a Roman numeral ("פרק II")
+    if not prefix:
+        before, after = _LATIN_WORD_BEFORE.search(text[:m.start()]), _LATIN_WORD_AFTER.search(text[m.end():])
+        # Beside an English word it is part of an English phrase ("the CNN report"); another
+        # abbreviation beside it doesn't count ("BBC ו-CNN").
+        if any(w and not w.group(1).replace(".", "").isupper() for w in (before, after)):
+            return m.group(0)
+        if not _HEBREW_NEAR.search(text[max(m.start() - 40, 0):m.end() + 40]):
+            return m.group(0)  # no Hebrew around it
+    if letters in ACRONYM_WORDS:
+        return prefix + ACRONYM_WORDS[letters]
+    if len(letters) > 5:
+        return m.group(0)
+    return prefix + "-".join(LETTER_NAMES[c] for c in letters)
+
+
 def _expand_date(m: re.Match) -> str:
     prefix, day, month, year = m.group(1) or "", int(m.group(2)), int(m.group(3)), int(m.group(4))
     if not (1 <= day <= 31 and 1 <= month <= 12):
@@ -439,11 +524,13 @@ def normalize(text: str) -> str:
     for pattern, reading in _ABBREVIATION_PATTERNS:
         text = pattern.sub(lambda m, r=reading: m.group(1) + r, text)
     text = _LIST_ITEM.sub(_expand_list_item, text)
+    text = _MAQAF_NUMBER.sub(lambda m: m.group(1) + "-", text)
     text = _ISO_DATE.sub(_reorder_iso_date, text)
     text = _PHONE.sub(_expand_phone, text)
     text = _YEAR_RANGE.sub(_expand_year_range, text)
     text = _ARABIC_DATE.sub(_expand_arabic_date, text)
     text = _ARABIC_NUMBER.sub(_expand_arabic_number, text)
+    text = _ACRONYM.sub(_expand_acronym, text)
     text = _GLUED_NUMBER.sub(_split_glued_number, text)
     text = _ENGLISH_DATE.sub(_expand_english_date, text)
     text = _ENGLISH_PAIR.sub(_expand_english_pair, text)

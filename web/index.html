@@ -426,6 +426,7 @@
             <button type="button" class="btn primary" id="compareRun"></button>
             <button type="button" class="btn ghost" id="compareClear" data-i18n="compareClear"></button>
           </div>
+          <p class="hint" id="compareWait" hidden></p>
         </div>
         <div class="editor">
           <textarea id="text" dir="auto" data-i18n-placeholder="placeholder"></textarea>
@@ -757,7 +758,8 @@ const STR = {
     "nav.words": "Pronunciation", "nav.transcribe": "Transcribe", "nav.status": "Settings",
     "tab.text": "Text", "tab.niqqud": "With niqqud", "tab.read": "Follow along", compare: "Compare engines",
     compareHint: "Tick the engines to compare. Each one reads the text in turn. A GPU engine that loads just for this is unloaded after its reading, so only one is in memory at a time.",
-    compareRun: "Compare {n} engines", compareClear: "Clear", stopReading: "Stop", stopped: "Stopped.",
+    compareRun: "Compare {n} engines", compareClear: "Clear",
+    compareWait: "A reading with {engine} is in progress (Read aloud). Comparing is possible when it finishes, or after you press Stop.", stopReading: "Stop", stopped: "Stopped.",
     markWords: "Mark each word exactly (Whisper)",
     markWordsHint: "Times every word with Whisper after its sentence is read, about 0.1 s a sentence, with the speech-to-text model in memory. Off: the sentence is marked exactly and the word is estimated.",
     placeholder: "Type or paste Hebrew text here",
@@ -968,7 +970,8 @@ const STR = {
     "nav.words": "מילון הגייה", "nav.transcribe": "תמלול", "nav.status": "הגדרות",
     "tab.text": "טקסט", "tab.niqqud": "עם ניקוד", "tab.read": "מעקב קריאה", compare: "השוואת מנועים",
     compareHint: "סמנו את המנועים להשוואה. כל מנוע קורא את הטקסט בתורו. מנוע GPU שנטען רק בשביל ההשוואה משוחרר אחרי הקריאה שלו, כך שרק אחד נמצא בזיכרון בכל רגע.",
-    compareRun: "השוואת {n} מנועים", compareClear: "ניקוי", stopReading: "עצירה", stopped: "נעצר.",
+    compareRun: "השוואת {n} מנועים", compareClear: "ניקוי",
+    compareWait: "הקראה עם {engine} מתבצעת עכשיו (כפתור הקרא). אפשר להשוות כשתסתיים, או אחרי לחיצה על עצירה.", stopReading: "עצירה", stopped: "נעצר.",
     markWords: "סימון מדויק של כל מילה (Whisper)",
     markWordsHint: "מתזמן כל מילה עם Whisper אחרי שהמשפט שלה מוקרא, כ-0.1 שנייה למשפט, ומודל התמלול נשאר בזיכרון. כבוי: המשפט מסומן בדיוק והמילה בהערכה.",
     placeholder: "כתבו או הדביקו כאן טקסט בעברית",
@@ -2454,6 +2457,7 @@ function showStop(on) {
   $("speak").querySelector("kbd").hidden = on;
   $("speak").classList.toggle("stop", on);
   if (on) $("speak").disabled = false;
+  updateCompareRun();
 }
 
 async function speak() {
@@ -2517,6 +2521,10 @@ function updateCompareRun() {
   const n = compareChosen().length;
   $("compareRun").textContent = t("compareRun", { n });
   $("compareRun").disabled = n < 2 || busyNow;
+  // A reading started with Read aloud blocks the comparison; say so, or the dimmed button looks broken
+  // while the log shows another engine loading.
+  $("compareWait").hidden = !speakAbort;
+  if (speakAbort) $("compareWait").textContent = t("compareWait", { engine: selectedVoice().engine_label || selectedVoice().engine });
 }
 $("compare").addEventListener("click", () => {
   const open = $("compareBox").hidden;
